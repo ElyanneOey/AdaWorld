@@ -9,7 +9,8 @@
 
 # No GPU or conda needed — this is just a file download
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# SLURM_SUBMIT_DIR is the directory where you ran sbatch from
+SCRIPT_DIR="${SLURM_SUBMIT_DIR}"
 
 mkdir -p "${SCRIPT_DIR}/checkpoints"
 

@@ -14,7 +14,8 @@ module load Anaconda3/2025.06-1
 
 source activate adaworld_elyanne
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# SLURM_SUBMIT_DIR is the directory where you ran sbatch from
+SCRIPT_DIR="${SLURM_SUBMIT_DIR}"
 
 # Hardcoded path to the mp4 file
 MP4="${SCRIPT_DIR}/../../random_actions_data/dataset/retro_act_v0.0.0/retro_8eyes-nes_v0.0.0/000000/000000/frames.mp4"
