@@ -1,11 +1,11 @@
 #!/bin/bash
 
-#SBATCH --partition=gpu_mig
+#SBATCH --partition=gpu_h100
 #SBATCH --gpus=1
 #SBATCH --job-name=lam_inference
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --time=04:00:00
+#SBATCH --time=00:30:00
 #SBATCH --output=logs/inference_%A.out
 
 module purge
