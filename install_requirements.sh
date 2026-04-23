@@ -15,8 +15,8 @@ module load Anaconda3/2025.06-1
 # activate env
 source activate adaworld_elyanne
 
-# setuptools provides pkg_resources, needed by lightning
-pip install --force-reinstall setuptools
+# downgrade setuptools — version 82 breaks pkg_resources with lightning==2.0.8
+pip install "setuptools==69.5.1"
 
 # install PyTorch with CUDA 11.8 first (not in requirements.txt)
 # pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
