@@ -1,7 +1,6 @@
 #!/bin/bash
 
-#SBATCH --partition=gpu_mig
-#SBATCH --gpus=1
+#SBATCH --partition=staging
 #SBATCH --job-name=install_req
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
@@ -16,5 +15,8 @@ module load Anaconda3/2025.06-1
 # activate env
 source activate adaworld_elyanne
 
-# install requirements
+# install PyTorch with CUDA 11.8 first (not in requirements.txt)
+pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
+
+# install remaining requirements
 pip install -r requirements.txt

@@ -1,7 +1,6 @@
 #!/bin/bash
 
-#SBATCH --partition=gpu_mig
-#SBATCH --gpus=1
+#SBATCH --partition=staging
 #SBATCH --job-name=install_env
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
