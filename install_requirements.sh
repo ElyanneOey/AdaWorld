@@ -1,6 +1,7 @@
 #!/bin/bash
 
 #SBATCH --partition=gpu_mig
+#SBATCH --gpus=1
 #SBATCH --job-name=install_req
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
