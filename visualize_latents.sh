@@ -19,7 +19,7 @@ pip install umap-learn matplotlib --quiet
 cd ${SLURM_SUBMIT_DIR}
 
 # method can be: pca, umap, tsne, all
-python new_stuff/visualize_latents.py \
+python New_stuff/visualize_latents.py \
     --dump-dir ./latent_actions_dump \
     --out-dir ./plots \
     --max-samples 10000 \
