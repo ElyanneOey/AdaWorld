@@ -5,7 +5,7 @@
 #SBATCH --job-name=extract_latents
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --time=00:50:00
+#SBATCH --time=04:00:00
 #SBATCH --output=logs/extract_latents_%A.out
 
 module purge
