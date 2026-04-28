@@ -107,13 +107,74 @@ def run_tsne(z: np.ndarray, perplexity: int = 30) -> np.ndarray:
     return tsne.fit_transform(z)
 
 
-def run_umap(z: np.ndarray, n_neighbors: int = 15, min_dist: float = 0.1) -> np.ndarray:
+def run_umap(z: np.ndarray, n_components: int = 2, n_neighbors: int = 15, min_dist: float = 0.1) -> np.ndarray:
     try:
         import umap
     except ImportError:
         raise ImportError("umap-learn is not installed. Run: pip install umap-learn")
-    reducer = umap.UMAP(n_components=2, n_neighbors=n_neighbors, min_dist=min_dist, random_state=42)
+    reducer = umap.UMAP(n_components=n_components, n_neighbors=n_neighbors, min_dist=min_dist, random_state=42)
     return reducer.fit_transform(z)
+
+
+def scatter_plot_3d(
+    embedding: np.ndarray,
+    labels: list,
+    title: str,
+    save_path: str,
+    max_classes: int = 20,
+) -> None:
+    """3D scatter plot colored by label, saved as a static PNG."""
+    from mpl_toolkits.mplot3d import Axes3D
+
+    label_encoder = LabelEncoder()
+
+    valid_mask = [l is not None for l in labels]
+    if not any(valid_mask):
+        print(f"  No labels available for {title}, skipping.")
+        return
+
+    valid_emb = embedding[valid_mask]
+    valid_labels = [l for l, m in zip(labels, valid_mask) if m]
+
+    if valid_labels and isinstance(valid_labels[0], (list, np.ndarray)):
+        valid_labels = [str(tuple(int(x) for x in l)) for l in valid_labels]
+
+    encoded = label_encoder.fit_transform(valid_labels)
+    classes = label_encoder.classes_
+
+    if len(classes) > max_classes:
+        print(f"  Too many classes ({len(classes)}) for {title}, showing top {max_classes}")
+        top_classes = classes[:max_classes]
+        mask = np.isin(valid_labels, top_classes)
+        valid_emb = valid_emb[mask]
+        encoded = label_encoder.transform([l for l, m in zip(valid_labels, mask) if m])
+        classes = top_classes
+
+    cmap = plt.cm.get_cmap('tab20', len(classes))
+
+    fig = plt.figure(figsize=(12, 9))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(
+        valid_emb[:, 0], valid_emb[:, 1], valid_emb[:, 2],
+        c=encoded, cmap=cmap, alpha=0.5, s=5
+    )
+
+    legend_handles = [
+        plt.Line2D([0], [0], marker='o', color='w',
+                   markerfacecolor=cmap(i / len(classes)), markersize=7, label=str(cls))
+        for i, cls in enumerate(classes)
+    ]
+    ax.legend(handles=legend_handles, title='Label', bbox_to_anchor=(1.05, 1),
+              loc='upper left', fontsize=7)
+
+    ax.set_title(title, fontsize=13)
+    ax.set_xlabel('dim 1')
+    ax.set_ylabel('dim 2')
+    ax.set_zlabel('dim 3')
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"  Saved: {save_path}")
 
 
 # ========================== Plotting ========================================
@@ -208,6 +269,8 @@ def parse_args():
     p.add_argument('--method', type=str, default='all',
                    choices=['pca', 'tsne', 'umap', 'all'],
                    help='Which method to run (default: all)')
+    p.add_argument('--umap-3d', action='store_true',
+                   help='Also run UMAP in 3D and save a 3D scatter plot')
     return p.parse_args()
 
 
@@ -242,12 +305,20 @@ def main():
 
     # --- UMAP ---
     if args.method in ('umap', 'all'):
-        print("\nRunning UMAP...")
-        umap_2d = run_umap(z)
+        print("\nRunning UMAP (2D)...")
+        umap_2d = run_umap(z, n_components=2)
         scatter_plot(umap_2d, actions, 'UMAP — colored by action',
                      os.path.join(args.out_dir, 'umap_actions.png'))
         scatter_plot(umap_2d, games, 'UMAP — colored by game',
                      os.path.join(args.out_dir, 'umap_games.png'))
+
+        if args.umap_3d:
+            print("\nRunning UMAP (3D)...")
+            umap_3d = run_umap(z, n_components=3)
+            scatter_plot_3d(umap_3d, actions, 'UMAP 3D — colored by action',
+                            os.path.join(args.out_dir, 'umap_3d_actions.png'))
+            scatter_plot_3d(umap_3d, games, 'UMAP 3D — colored by game',
+                            os.path.join(args.out_dir, 'umap_3d_games.png'))
 
     print(f"\nDone. Plots saved to {args.out_dir}/")
 
