@@ -54,16 +54,18 @@ def load_all_latents(dump_dir: str, max_samples: int | None = None):
 
         n = z.shape[0]
 
-        # Actions (may not always be present)
+        # Actions (may not always be present, may contain None values)
         actions = data.get('actions', None)
         if actions is not None:
             if isinstance(actions, torch.Tensor):
-                actions = actions.cpu()
-            else:
-                actions = torch.as_tensor(actions)
-            if actions.ndim == 2 and actions.shape[1] == 1:
-                actions = actions.squeeze(1)
-            actions = actions.tolist()
+                actions = actions.tolist()
+            elif not isinstance(actions, list):
+                try:
+                    actions = list(actions)
+                except Exception:
+                    actions = [None] * n
+            # Replace any remaining None entries
+            actions = [a if a is not None else None for a in actions]
         else:
             actions = [None] * n
 

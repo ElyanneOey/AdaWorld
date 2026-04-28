@@ -13,9 +13,6 @@ module load 2024
 module load Anaconda3/2024.06-1
 source activate adaworld_elyanne
 
-# install extra dependencies not in requirements.txt
-pip install umap-learn matplotlib --quiet
-
 cd ${SLURM_SUBMIT_DIR}
 
 # method can be: pca, umap, tsne, all
