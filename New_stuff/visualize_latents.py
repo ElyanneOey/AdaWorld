@@ -260,6 +260,58 @@ def pca_variance_plot(pca, save_path: str) -> None:
     print(f"  Saved: {save_path}")
 
 
+# ========================== Per-game analysis ================================
+
+def run_per_game(
+    z: np.ndarray,
+    actions: list,
+    games: list,
+    out_dir: str,
+    method: str = 'pca',
+    min_samples: int = 20,
+) -> None:
+    """For each game, run dimensionality reduction on that game's latents only
+    and save a scatter plot colored by action."""
+    game_names = sorted(set(games))
+    games_arr = np.array(games)
+    per_game_dir = os.path.join(out_dir, 'per_game')
+    os.makedirs(per_game_dir, exist_ok=True)
+    print(f"\nPer-game analysis ({method}) for {len(game_names)} games → {per_game_dir}/")
+
+    for game in game_names:
+        mask = games_arr == game
+        z_g = z[mask]
+        actions_g = [actions[i] for i, m in enumerate(mask) if m]
+        n = len(z_g)
+
+        if n < min_samples:
+            print(f"  Skipping {game} (only {n} samples)")
+            continue
+
+        # Check that at least some actions are labelled
+        has_labels = any(a is not None for a in actions_g)
+
+        save_path = os.path.join(per_game_dir, f"{game}_{method}.png")
+
+        try:
+            if method == 'pca':
+                emb, _ = run_pca(z_g, n_components=2)
+            elif method == 'tsne':
+                perp = min(30, n // 3)
+                emb = run_tsne(z_g, perplexity=perp)
+            elif method == 'umap':
+                n_neighbors = min(15, n - 1)
+                emb = run_umap(z_g, n_components=2, n_neighbors=n_neighbors)
+
+            title = f"{game}\n{method.upper()} — colored by action  (n={n})"
+            if has_labels:
+                scatter_plot(emb, actions_g, title, save_path)
+            else:
+                print(f"  {game}: no action labels, skipping plot")
+        except Exception as e:
+            print(f"  {game}: failed ({e})")
+
+
 # ========================== Main ============================================
 
 def parse_args():
@@ -275,6 +327,14 @@ def parse_args():
                    help='Which method to run (default: all)')
     p.add_argument('--umap-3d', action='store_true',
                    help='Also run UMAP in 3D and save a 3D scatter plot')
+    p.add_argument('--per-game', action='store_true',
+                   help='Also run per-game analysis: for each game, visualize action '
+                        'clustering within that game only')
+    p.add_argument('--per-game-method', type=str, default='pca',
+                   choices=['pca', 'tsne', 'umap'],
+                   help='Method to use for per-game plots (default: pca)')
+    p.add_argument('--min-samples', type=int, default=20,
+                   help='Skip games with fewer than this many samples in per-game mode')
     return p.parse_args()
 
 
@@ -323,6 +383,12 @@ def main():
                             os.path.join(args.out_dir, 'umap_3d_actions.png'))
             scatter_plot_3d(umap_3d, games, 'UMAP 3D — colored by game',
                             os.path.join(args.out_dir, 'umap_3d_games.png'))
+
+    # --- Per-game ---
+    if args.per_game:
+        run_per_game(z, actions, games, args.out_dir,
+                     method=args.per_game_method,
+                     min_samples=args.min_samples)
 
     print(f"\nDone. Plots saved to {args.out_dir}/")
 
