@@ -121,7 +121,7 @@ def scatter_plot_3d(
     labels: list,
     title: str,
     save_path: str,
-    max_classes: int = 20,
+    max_classes: int = 300,
 ) -> None:
     """3D scatter plot colored by label, saved as a static PNG."""
     from mpl_toolkits.mplot3d import Axes3D
@@ -150,9 +150,10 @@ def scatter_plot_3d(
         encoded = label_encoder.transform([l for l, m in zip(valid_labels, mask) if m])
         classes = top_classes
 
-    cmap = plt.cm.get_cmap('tab20', len(classes))
+    n = len(classes)
+    cmap = plt.cm.get_cmap('tab20', n) if n <= 20 else plt.cm.get_cmap('gist_rainbow', n)
 
-    fig = plt.figure(figsize=(12, 9))
+    fig = plt.figure(figsize=(14, 9))
     ax = fig.add_subplot(111, projection='3d')
     ax.scatter(
         valid_emb[:, 0], valid_emb[:, 1], valid_emb[:, 2],
@@ -161,11 +162,12 @@ def scatter_plot_3d(
 
     legend_handles = [
         plt.Line2D([0], [0], marker='o', color='w',
-                   markerfacecolor=cmap(i / len(classes)), markersize=7, label=str(cls))
+                   markerfacecolor=cmap(i / n), markersize=6, label=str(cls))
         for i, cls in enumerate(classes)
     ]
+    ncol = max(1, n // 30)
     ax.legend(handles=legend_handles, title='Label', bbox_to_anchor=(1.05, 1),
-              loc='upper left', fontsize=7)
+              loc='upper left', fontsize=5, ncol=ncol)
 
     ax.set_title(title, fontsize=13)
     ax.set_xlabel('dim 1')
@@ -184,7 +186,7 @@ def scatter_plot(
     labels: list,
     title: str,
     save_path: str,
-    max_classes: int = 20,
+    max_classes: int = 300,
 ) -> None:
     """2D scatter plot colored by label."""
     label_encoder = LabelEncoder()
@@ -213,10 +215,11 @@ def scatter_plot(
         encoded = label_encoder.transform([l for l, m in zip(valid_labels, mask) if m])
         classes = top_classes
 
-    fig, ax = plt.subplots(figsize=(10, 8))
-    cmap = plt.cm.get_cmap('tab20', len(classes))
+    n = len(classes)
+    cmap = plt.cm.get_cmap('tab20', n) if n <= 20 else plt.cm.get_cmap('gist_rainbow', n)
 
-    scatter = ax.scatter(
+    _, ax = plt.subplots(figsize=(14, 8))
+    ax.scatter(
         valid_emb[:, 0], valid_emb[:, 1],
         c=encoded, cmap=cmap,
         alpha=0.5, s=8, linewidths=0
@@ -224,11 +227,12 @@ def scatter_plot(
 
     legend_handles = [
         plt.Line2D([0], [0], marker='o', color='w',
-                   markerfacecolor=cmap(i / len(classes)), markersize=7, label=str(cls))
+                   markerfacecolor=cmap(i / n), markersize=6, label=str(cls))
         for i, cls in enumerate(classes)
     ]
-    ax.legend(handles=legend_handles, title='Label', bbox_to_anchor=(1.05, 1),
-              loc='upper left', fontsize=7)
+    ncol = max(1, n // 30)
+    ax.legend(handles=legend_handles, title='Label', bbox_to_anchor=(1.02, 1),
+              loc='upper left', fontsize=5, ncol=ncol)
 
     ax.set_title(title, fontsize=13)
     ax.set_xlabel('dim 1')
