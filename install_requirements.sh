@@ -21,5 +21,5 @@ pip install "setuptools==69.5.1"
 # install PyTorch with CUDA 11.8 first (not in requirements.txt)
 # pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
 
-# # install remaining requirements
-# pip install -r requirements.txt
+# install remaining requirements
+pip install -r requirements.txt
