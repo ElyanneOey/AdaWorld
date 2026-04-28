@@ -137,6 +137,10 @@ def scatter_plot(
     valid_emb = embedding[valid_mask]
     valid_labels = [l for l, m in zip(labels, valid_mask) if m]
 
+    # Convert multi-dimensional action vectors to strings for LabelEncoder
+    if valid_labels and isinstance(valid_labels[0], (list, np.ndarray)):
+        valid_labels = [str(tuple(int(x) for x in l)) for l in valid_labels]
+
     encoded = label_encoder.fit_transform(valid_labels)
     classes = label_encoder.classes_
 
