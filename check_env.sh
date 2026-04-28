@@ -1,5 +1,12 @@
 #!/bin/bash
 
+#SBATCH --partition=staging
+#SBATCH --job-name=check_env
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=2
+#SBATCH --time=00:05:00
+#SBATCH --output=logs/check_env_%A.out
+
 module purge
 module load 2025
 module load Anaconda3/2025.06-1
