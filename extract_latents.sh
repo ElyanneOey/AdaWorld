@@ -13,7 +13,7 @@ module load 2024
 module load Anaconda3/2024.06-1
 source activate adaworld_elyanne
 
-VIDEO_PATH=/home/scur0531/random_actions_data/dataset/retro_act_v0.0.0
+VIDEO_PATH=/home/scur0531/random_actions_data/dataset/retro_act_v0.0.0_random
 CHECKPOINT=${SLURM_SUBMIT_DIR}/checkpoints/lam.ckpt
 
 python New_stuff/extract_latent_actions.py --video $VIDEO_PATH \
