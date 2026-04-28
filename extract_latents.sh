@@ -9,8 +9,8 @@
 #SBATCH --output=logs/extract_latents_%A.out
 
 module purge
-module load 2025
-module load Anaconda3/2025.06-1
+module load 2024
+module load Anaconda3/2024.06-1
 source activate adaworld_elyanne
 
 VIDEO_PATH=/home/scur0531/random_actions_data/dataset/retro_act_v0.0.0

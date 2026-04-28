@@ -8,8 +8,8 @@
 #SBATCH --output=logs/install_req_%A.out
 
 module purge
-module load 2025
-module load Anaconda3/2025.06-1
+module load 2024
+module load Anaconda3/2024.06-1
 
 
 # activate env
