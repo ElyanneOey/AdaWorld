@@ -75,9 +75,15 @@ def load_all_latents(dump_dir: str, max_samples: int | None = None):
 
     all_z = torch.cat(all_z, dim=0).numpy()
 
+    # Trim to shortest to handle any per-file length mismatches
+    n_total = min(len(all_z), len(all_actions), len(all_games))
+    all_z = all_z[:n_total]
+    all_actions = all_actions[:n_total]
+    all_games = all_games[:n_total]
+
     # Subsample if requested
-    if max_samples is not None and len(all_z) > max_samples:
-        idx = np.random.default_rng(42).choice(len(all_z), max_samples, replace=False)
+    if max_samples is not None and n_total > max_samples:
+        idx = np.random.default_rng(42).choice(n_total, max_samples, replace=False)
         all_z = all_z[idx]
         all_actions = [all_actions[i] for i in idx]
         all_games = [all_games[i] for i in idx]
