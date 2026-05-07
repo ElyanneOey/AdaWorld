@@ -17,7 +17,8 @@ cd ${SLURM_SUBMIT_DIR}
 
 # method can be: pca, umap, tsne, all
 python New_stuff/visualize_latents.py \
-    --dump-dir ./latent_actions_dump \
+    --dump-dir /gpfs/home3/scur0531/AdaWorld/latent_actions_dump \
+    --source adaworld \
     --out-dir ./plots \
     --max-samples 10000 \
     --method pca
