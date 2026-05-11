@@ -356,7 +356,7 @@ def run_per_game(
     and save a scatter plot colored by action."""
     game_names = sorted(set(games))
     games_arr = np.array(games)
-    per_game_dir = os.path.join(out_dir, 'per_game')
+    per_game_dir = os.path.join(out_dir, 'per_game', method)
     os.makedirs(per_game_dir, exist_ok=True)
     print(f"\nPer-game analysis ({method}) for {len(game_names)} games → {per_game_dir}/")
 
