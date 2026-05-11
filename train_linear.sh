@@ -18,9 +18,9 @@ cd ${SLURM_SUBMIT_DIR}
 python New_stuff/train_linear.py \
     --epochs 100 \
     --batch_size 256 \
-    --action_hidden_layers 1 \
+    --action_hidden_layers 0 \
     --game_hidden_layers 0 \
-    --dataset adaworld \
+    --dataset olafworld \
     --dump-dir /gpfs/home3/scur0531/AdaWorld/latent_actions_dump \
     --per_game \
-    --out-csv ./results/per_game_action_accuracy_mpl1.csv
+    --out-csv ./results/per_game_action_accuracy_olaf_no_hidden.csv
