@@ -22,7 +22,7 @@ cd ${SLURM_SUBMIT_DIR}
 #   plots/per_game/umap/<game>_umap.png
 
 BASE_ARGS="--dump-dir /gpfs/home3/scur0531/AdaWorld/latent_actions_dump \
-    --source adaworld \
+    --source olafworld \
     --out-dir ./plots \
     --max-samples 999999 \
     --per-game \
