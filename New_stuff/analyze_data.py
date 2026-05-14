@@ -159,6 +159,48 @@ def plot_frame_delta(delta_stats: dict, save_path: str) -> None:
     print(f"Saved: {save_path}")
 
 
+def plot_frame_delta_per_game_overall(game_overall_delta: dict, save_path: str) -> None:
+    """Bar chart: overall mean frame delta per game, sorted descending."""
+    games  = sorted(game_overall_delta, key=lambda g: game_overall_delta[g], reverse=True)
+    vals   = [game_overall_delta[g] for g in games]
+    labels = [g.replace('retro_', '').replace('_v0.0.0', '') for g in games]
+    mean   = np.mean(vals)
+
+    fig_w = max(10, len(games) * 0.32)
+    fig, ax = plt.subplots(figsize=(fig_w, 5))
+    ax.bar(range(len(games)), vals, color='darkorange', alpha=0.8)
+    ax.axhline(mean, color='red', linestyle='--', label=f'Mean = {mean:.2f}')
+    ax.set_xticks(range(len(games)))
+    ax.set_xticklabels(labels, rotation=90, fontsize=6)
+    ax.set_ylabel('Mean pixel delta')
+    ax.set_title('Overall mean frame delta per game (sorted)')
+    ax.legend()
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"Saved: {save_path}")
+
+
+def plot_frame_delta_distribution(game_video_deltas: dict, save_path: str) -> None:
+    """Box plot: distribution of per-video mean frame delta per game, sorted by median."""
+    games = sorted(game_video_deltas, key=lambda g: np.median(game_video_deltas[g]), reverse=True)
+    data  = [game_video_deltas[g] for g in games]
+    labels = [g.replace('retro_', '').replace('_v0.0.0', '') for g in games]
+
+    fig_w = max(10, len(games) * 0.4)
+    fig, ax = plt.subplots(figsize=(fig_w, 5))
+    ax.boxplot(data, labels=labels, patch_artist=True,
+               boxprops=dict(facecolor='darkorange', alpha=0.6),
+               medianprops=dict(color='red', linewidth=1.5))
+    ax.set_xticklabels(labels, rotation=90, fontsize=6)
+    ax.set_ylabel('Mean pixel delta per video')
+    ax.set_title('Distribution of per-video frame delta per game (sorted by median)')
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"Saved: {save_path}")
+
+
 # ========================== Frame delta computation =========================
 
 def _load_frames_from_dir(frames_dir: str) -> list[np.ndarray]:
@@ -177,18 +219,19 @@ def _load_frames_from_dir(frames_dir: str) -> list[np.ndarray]:
 
 
 def compute_frame_deltas(dump_dir: str, video_dir: str, source: str | None = None):
-    """Compute mean absolute pixel difference between consecutive frames per action per game.
+    """Compute frame delta statistics from original frames/ directories.
 
-    Matches latent_actions.pt (for action labels) with the original frames/ directories.
-    Expected structure:
-        dump_dir/<source>/<game>/<seed>/<episode>/latent_actions.pt
-        video_dir/<game>/<seed>/<episode>/frames/   ← directory of frame images
+    Returns three dicts:
+        game_action_mean_delta : {game: {action: mean_delta}}
+        game_video_deltas      : {game: [mean_delta_per_video, ...]}
+        game_overall_delta     : {game: overall_mean_delta}
     """
     pattern = (f'{dump_dir}/{source}/*/*/*/latent_actions.pt' if source
                else f'{dump_dir}/*/*/*/latent_actions.pt')
     files = sorted(glob.glob(pattern))
 
     game_action_deltas = defaultdict(lambda: defaultdict(list))
+    game_video_deltas  = defaultdict(list)   # one entry per video (episode)
 
     for f in files:
         parts = Path(f).parts
@@ -207,8 +250,12 @@ def compute_frame_deltas(dump_dir: str, video_dir: str, source: str | None = Non
         if len(frames) < 2:
             continue
 
+        video_deltas = []
         n_pairs = min(len(frames) - 1, len(actions_raw))
         for i in range(n_pairs):
+            delta = float(np.mean(np.abs(frames[i + 1] - frames[i])))
+            video_deltas.append(delta)
+
             action = actions_raw[i]
             if action is None:
                 continue
@@ -216,15 +263,20 @@ def compute_frame_deltas(dump_dir: str, video_dir: str, source: str | None = Non
                 key = str(tuple(int(x) for x in action))
             except (TypeError, ValueError):
                 continue
-            delta = np.mean(np.abs(frames[i + 1] - frames[i]))
             game_action_deltas[game][key].append(delta)
+
+        if video_deltas:
+            game_video_deltas[game].append(float(np.mean(video_deltas)))
 
     game_action_mean_delta = {
         game: {action: float(np.mean(vals)) for action, vals in action_dict.items()}
         for game, action_dict in game_action_deltas.items()
     }
+    game_overall_delta = {
+        game: float(np.mean(vids)) for game, vids in game_video_deltas.items()
+    }
     print(f"Computed frame deltas for {len(game_action_mean_delta)} games")
-    return game_action_mean_delta
+    return game_action_mean_delta, game_video_deltas, game_overall_delta
 
 
 # ========================== CSV saving ======================================
@@ -251,15 +303,19 @@ def save_latent_counts_csv(game_total_counts: dict, save_path: str) -> None:
     print(f"Saved: {save_path}")
 
 
-def save_frame_delta_csv(delta_stats: dict, save_path: str) -> None:
-    all_actions = sorted({a for stats in delta_stats.values() for a in stats})
+def save_frame_delta_csv(game_action_mean_delta: dict, game_overall_delta: dict, save_path: str) -> None:
+    all_actions = sorted({a for stats in game_action_mean_delta.values() for a in stats})
+    all_games = sorted(set(game_action_mean_delta) | set(game_overall_delta))
     with open(save_path, 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['game'] + all_actions)
-        for game in sorted(delta_stats.keys()):
-            row = [game] + [f"{delta_stats[game].get(a, ''):.4f}" if delta_stats[game].get(a) else ''
-                            for a in all_actions]
-            writer.writerow(row)
+        writer.writerow(['game', 'overall_mean_delta'] + all_actions)
+        for game in all_games:
+            overall = f"{game_overall_delta.get(game, ''):.4f}" if game in game_overall_delta else ''
+            per_action = [
+                f"{game_action_mean_delta[game].get(a, ''):.4f}" if game in game_action_mean_delta and game_action_mean_delta[game].get(a) else ''
+                for a in all_actions
+            ]
+            writer.writerow([game, overall] + per_action)
     print(f"Saved: {save_path}")
 
 
@@ -299,10 +355,15 @@ def main():
 
     if args.video_dir:
         print("\nComputing frame deltas (this may take a while)...")
-        delta_stats = compute_frame_deltas(args.dump_dir, args.video_dir, args.source)
+        delta_stats, game_video_deltas, game_overall_delta = compute_frame_deltas(
+            args.dump_dir, args.video_dir, args.source)
         plot_frame_delta(delta_stats,
                          os.path.join(args.out_dir, 'frame_delta_per_action.png'))
-        save_frame_delta_csv(delta_stats,
+        plot_frame_delta_per_game_overall(game_overall_delta,
+                                          os.path.join(args.out_dir, 'frame_delta_overall_per_game.png'))
+        plot_frame_delta_distribution(game_video_deltas,
+                                      os.path.join(args.out_dir, 'frame_delta_distribution.png'))
+        save_frame_delta_csv(delta_stats, game_overall_delta,
                              os.path.join(args.results_dir, 'frame_delta.csv'))
     else:
         print("\nSkipping frame delta (no --video-dir provided)")
