@@ -181,6 +181,41 @@ def plot_frame_delta_per_game_overall(game_overall_delta: dict, save_path: str) 
     print(f"Saved: {save_path}")
 
 
+def plot_frame_delta_early_mid_late(game_early_delta: dict, game_mid_delta: dict,
+                                    game_late_delta: dict, save_path: str) -> None:
+    """Grouped bar chart: early / mid / late mean frame delta per game.
+
+    Sorted by the drop from early to late (largest drop first) so games
+    where the agent likely dies are at the left.
+    """
+    games = sorted(
+        set(game_early_delta) & set(game_mid_delta) & set(game_late_delta),
+        key=lambda g: game_early_delta[g] - game_late_delta[g],
+        reverse=True,
+    )
+    labels = [g.replace('retro_', '').replace('_v0.0.0', '') for g in games]
+    early  = [game_early_delta[g] for g in games]
+    mid    = [game_mid_delta[g]   for g in games]
+    late   = [game_late_delta[g]  for g in games]
+
+    x = np.arange(len(games))
+    w = 0.25
+    fig_w = max(10, len(games) * 0.5)
+    fig, ax = plt.subplots(figsize=(fig_w, 5))
+    ax.bar(x - w, early, w, label='Early (1st third)', color='steelblue',  alpha=0.85)
+    ax.bar(x,     mid,   w, label='Mid   (2nd third)', color='darkorange', alpha=0.85)
+    ax.bar(x + w, late,  w, label='Late  (3rd third)', color='firebrick',  alpha=0.85)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=90, fontsize=6)
+    ax.set_ylabel('Mean pixel delta')
+    ax.set_title('Early / Mid / Late frame delta per game  (sorted by early→late drop)')
+    ax.legend()
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"Saved: {save_path}")
+
+
 def plot_frame_delta_distribution(game_video_deltas: dict, save_path: str) -> None:
     """Box plot: distribution of per-video mean frame delta per game, sorted by median."""
     games = sorted(game_video_deltas, key=lambda g: np.median(game_video_deltas[g]), reverse=True)
@@ -221,17 +256,23 @@ def _load_frames_from_dir(frames_dir: str) -> list[np.ndarray]:
 def compute_frame_deltas(dump_dir: str, video_dir: str, source: str | None = None):
     """Compute frame delta statistics from original frames/ directories.
 
-    Returns three dicts:
+    Returns seven dicts:
         game_action_mean_delta : {game: {action: mean_delta}}
         game_video_deltas      : {game: [mean_delta_per_video, ...]}
         game_overall_delta     : {game: overall_mean_delta}
+        game_early_delta       : {game: mean_delta over first third of frames}
+        game_mid_delta         : {game: mean_delta over middle third of frames}
+        game_late_delta        : {game: mean_delta over last third of frames}
     """
     pattern = (f'{dump_dir}/{source}/*/*/*/latent_actions.pt' if source
                else f'{dump_dir}/*/*/*/latent_actions.pt')
     files = sorted(glob.glob(pattern))
 
     game_action_deltas = defaultdict(lambda: defaultdict(list))
-    game_video_deltas  = defaultdict(list)   # one entry per video (episode)
+    game_video_deltas  = defaultdict(list)
+    game_early_deltas  = defaultdict(list)
+    game_mid_deltas    = defaultdict(list)
+    game_late_deltas   = defaultdict(list)
 
     for f in files:
         parts = Path(f).parts
@@ -267,16 +308,22 @@ def compute_frame_deltas(dump_dir: str, video_dir: str, source: str | None = Non
 
         if video_deltas:
             game_video_deltas[game].append(float(np.mean(video_deltas)))
+            n = len(video_deltas)
+            t1, t2 = max(1, n // 3), max(2, 2 * n // 3)
+            game_early_deltas[game].append(float(np.mean(video_deltas[:t1])))
+            game_mid_deltas[game].append(float(np.mean(video_deltas[t1:t2])))
+            game_late_deltas[game].append(float(np.mean(video_deltas[t2:])))
 
     game_action_mean_delta = {
         game: {action: float(np.mean(vals)) for action, vals in action_dict.items()}
         for game, action_dict in game_action_deltas.items()
     }
-    game_overall_delta = {
-        game: float(np.mean(vids)) for game, vids in game_video_deltas.items()
-    }
+    game_overall_delta = {game: float(np.mean(vids)) for game, vids in game_video_deltas.items()}
+    game_early_delta   = {game: float(np.mean(vals)) for game, vals in game_early_deltas.items()}
+    game_mid_delta     = {game: float(np.mean(vals)) for game, vals in game_mid_deltas.items()}
+    game_late_delta    = {game: float(np.mean(vals)) for game, vals in game_late_deltas.items()}
     print(f"Computed frame deltas for {len(game_action_mean_delta)} games")
-    return game_action_mean_delta, game_video_deltas, game_overall_delta
+    return game_action_mean_delta, game_video_deltas, game_overall_delta, game_early_delta, game_mid_delta, game_late_delta
 
 
 # ========================== CSV saving ======================================
@@ -355,14 +402,16 @@ def main():
 
     if args.video_dir:
         print("\nComputing frame deltas (this may take a while)...")
-        delta_stats, game_video_deltas, game_overall_delta = compute_frame_deltas(
-            args.dump_dir, args.video_dir, args.source)
+        delta_stats, game_video_deltas, game_overall_delta, game_early_delta, game_mid_delta, game_late_delta = \
+            compute_frame_deltas(args.dump_dir, args.video_dir, args.source)
         plot_frame_delta(delta_stats,
                          os.path.join(args.out_dir, 'frame_delta_per_action.png'))
         plot_frame_delta_per_game_overall(game_overall_delta,
                                           os.path.join(args.out_dir, 'frame_delta_overall_per_game.png'))
         plot_frame_delta_distribution(game_video_deltas,
                                       os.path.join(args.out_dir, 'frame_delta_distribution.png'))
+        plot_frame_delta_early_mid_late(game_early_delta, game_mid_delta, game_late_delta,
+                                        os.path.join(args.out_dir, 'frame_delta_early_mid_late.png'))
         save_frame_delta_csv(delta_stats, game_overall_delta,
                              os.path.join(args.results_dir, 'frame_delta.csv'))
     else:
