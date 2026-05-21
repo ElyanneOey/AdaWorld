@@ -53,6 +53,7 @@ def load_all_latents(dump_dir: str, max_samples: int | None = None, source_filte
     all_games = []
     all_sources = []
 
+    _printed_keys = False
     for f in files:
         rel_parts = Path(f).relative_to(dump_dir).parts
         source    = rel_parts[0]   # e.g. adaworld / olafworld
@@ -62,6 +63,9 @@ def load_all_latents(dump_dir: str, max_samples: int | None = None, source_filte
         except Exception as e:
             print(f"  Skipping {f}: {e}")
             continue
+        if not _printed_keys:
+            print(f"  [debug] keys in first file: {list(data.keys())}")
+            _printed_keys = True
 
         z = data['z_mu']
         if z is None:
