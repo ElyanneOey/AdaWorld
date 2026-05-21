@@ -81,8 +81,19 @@ def load_all_latents(dump_dir: str, max_samples: int | None = None, source_filte
                     actions = list(actions)
                 except Exception:
                     actions = [None] * n
-            # Replace any remaining None entries
-            actions = [a if a is not None else None for a in actions]
+            # Normalise each action to a hashable type
+            def _to_label(a):
+                if a is None:
+                    return None
+                if isinstance(a, dict):
+                    return str(sorted(a.items()))
+                if isinstance(a, (list, np.ndarray, torch.Tensor)):
+                    try:
+                        return str(tuple(int(x) for x in a))
+                    except Exception:
+                        return str(a)
+                return a
+            actions = [_to_label(a) for a in actions]
         else:
             actions = [None] * n
 
