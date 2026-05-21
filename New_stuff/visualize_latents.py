@@ -137,6 +137,7 @@ def run_umap(z: np.ndarray, n_components: int = 2, n_neighbors: int = 15, min_di
     return reducer.fit_transform(z)
 
 
+
 def scatter_plot_3d(
     embedding: np.ndarray,
     labels: list,
