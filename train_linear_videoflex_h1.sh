@@ -21,6 +21,6 @@ python New_stuff/train_linear.py \
     --action_hidden_layers 1 \
     --game_hidden_layers 0 \
     --dataset adaworld \
-    --dump-dir /gpfs/home3/scur0531/AdaWorld/latent_actions_dump_2 \
+    --dump-dir /gpfs/home3/scur0531/AdaWorld/latent_actions_videoflextok \
     --per_game \
-    --out-csv ./results/p2p/adaworld_per_game_action_accuracy_h1.csv
+    --out-csv ./results/videoflextok/per_game_action_accuracy_h1.csv

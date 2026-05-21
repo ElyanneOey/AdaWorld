@@ -27,57 +27,6 @@ from sklearn.preprocessing import LabelEncoder
 
 # ========================== Data Loading ====================================
 
-def _decode_keyboard_actions(keyboard_labels, keyboard_keys=None):
-    """Convert p2p keyboard_labels to human-readable action strings.
-
-    keyboard_labels: tensor (N, K) multi-hot  OR  list of strings  OR  list of ints
-    keyboard_keys:   list/tensor of K key name strings, e.g. ['w','a','s','d',...]
-    Returns a list of N strings like 'w', 'w+a', 'none'.
-    """
-    if isinstance(keyboard_labels, torch.Tensor):
-        kl = keyboard_labels.tolist()
-    elif not isinstance(keyboard_labels, list):
-        kl = list(keyboard_labels)
-    else:
-        kl = keyboard_labels
-
-    if not kl:
-        return []
-
-    # Already strings — nothing to decode
-    if isinstance(kl[0], str):
-        return kl
-
-    # Resolve key name list
-    if keyboard_keys is not None:
-        if isinstance(keyboard_keys, torch.Tensor):
-            key_names = keyboard_keys.tolist()
-        elif not isinstance(keyboard_keys, list):
-            key_names = list(keyboard_keys)
-        else:
-            key_names = keyboard_keys
-        key_names = [str(k) for k in key_names]
-    else:
-        key_names = None
-
-    result = []
-    for label in kl:
-        if isinstance(label, (int, float)):
-            # Single class index
-            if key_names and int(label) < len(key_names):
-                result.append(key_names[int(label)])
-            else:
-                result.append(str(int(label)))
-        elif isinstance(label, (list, tuple)):
-            if key_names and len(label) == len(key_names):
-                # Multi-hot vector: collect all pressed keys
-                pressed = [key_names[i] for i, v in enumerate(label) if v]
-                result.append('+'.join(sorted(pressed)) if pressed else 'none')
-            else:
-                result.append(str(label))
-        else:
-            result.append(str(label))
-    return result
 
 def load_all_latents(dump_dir: str, max_samples: int | None = None,
                      source_filter: str | None = None, no_source: bool = False):
@@ -104,16 +53,15 @@ def load_all_latents(dump_dir: str, max_samples: int | None = None,
     all_sources = []
 
     pseudo_source = Path(dump_dir).name  # used as source label when --no-source
+    is_dump2 = 'latent_actions_dump_2' in dump_dir
 
     _printed_keys = False
     for f in files:
         rel_parts = Path(f).relative_to(dump_dir).parts
         if no_source:
-            source    = pseudo_source   # e.g. 'latent_actions_videoflextok'
-            game_name = rel_parts[0]    # game folder is directly under dump_dir
+            source = pseudo_source
         else:
-            source    = rel_parts[0]    # e.g. adaworld / olafworld
-            game_name = rel_parts[1]    # e.g. retro_8eyes-nes_v0.0.0 or uuid
+            source = rel_parts[0]
         try:
             data = torch.load(f, map_location='cpu')
         except Exception as e:
@@ -122,6 +70,18 @@ def load_all_latents(dump_dir: str, max_samples: int | None = None,
         if not _printed_keys:
             print(f"  [debug] keys in first file: {list(data.keys())}")
             _printed_keys = True
+
+        # Game name: stored name takes priority, then dataset-specific path heuristic
+        if data.get('game_name'):
+            game_name = str(data['game_name'])
+        elif is_dump2:
+            # layout: <dump>/<game>/<session>/latent_actions.pt → parts[-3] is game
+            abs_parts = Path(f).parts
+            game_name = abs_parts[-3] if len(abs_parts) >= 3 else 'unknown'
+        elif no_source:
+            game_name = rel_parts[0]
+        else:
+            game_name = rel_parts[1]
 
         z = data['z_mu']
         if z is None:
@@ -135,33 +95,70 @@ def load_all_latents(dump_dir: str, max_samples: int | None = None,
 
         n = z.shape[0]
 
-        # Actions (may not always be present, may contain None values)
-        # p2p data uses keyboard_labels/keyboard_keys instead of actions
-        actions = data.get('actions', None)
-        if actions is None and 'keyboard_labels' in data:
-            actions = _decode_keyboard_actions(
-                data['keyboard_labels'], data.get('keyboard_keys', None))
-        if actions is not None:
-            if isinstance(actions, torch.Tensor):
-                actions = actions.tolist()
-            elif not isinstance(actions, list):
+        # Actions
+        actions_raw = data.get('actions', None)
+        has_dense = actions_raw is not None
+        try:
+            has_dense = has_dense and len(actions_raw) > 0
+        except TypeError:
+            pass
+
+        if has_dense:
+            if isinstance(actions_raw, torch.Tensor):
+                actions_raw = actions_raw.tolist()
+            elif not isinstance(actions_raw, list):
                 try:
-                    actions = list(actions)
+                    actions_raw = list(actions_raw)
                 except Exception:
-                    actions = [None] * n
-            # Normalise each action to a hashable type
+                    actions_raw = [None] * n
+
             def _to_label(a):
                 if a is None:
                     return None
                 if isinstance(a, dict):
+                    # latent_actions_dump_2 (p2p): dicts with 'action' key
+                    if is_dump2 and 'action' in a:
+                        val = a['action']
+                        return val if isinstance(val, str) else str(val)
+                    # skipped dataset: dicts with 'desc'/'description' key
                     return a.get('desc', a.get('description', str(sorted(a.items()))))
                 if isinstance(a, (list, np.ndarray, torch.Tensor)):
                     try:
                         return str(tuple(int(x) for x in a))
                     except Exception:
                         return str(a)
-                return a
-            actions = [_to_label(a) for a in actions]
+                return a if isinstance(a, str) else str(a)
+
+            actions = [_to_label(a) for a in actions_raw]
+
+        elif 'keyboard_labels' in data:
+            # p2p keyboard + mouse fallback (matching train_linear_2.py)
+            kl = data['keyboard_labels']
+            kl = kl if isinstance(kl, torch.Tensor) else torch.as_tensor(kl)
+            if kl.ndim == 1:
+                kl = kl.unsqueeze(0)
+            kl = (kl > 0)
+
+            kk = data.get('keyboard_keys', None)
+            key_names = None
+            if kk is not None:
+                key_names = [str(k) for k in (kk.tolist() if isinstance(kk, torch.Tensor) else list(kk))]
+
+            mb = data.get('mouse_buttons', None)
+            if mb is not None:
+                mb = mb if isinstance(mb, torch.Tensor) else torch.as_tensor(mb)
+
+            actions = []
+            for i in range(kl.shape[0]):
+                row = kl[i].tolist()
+                pressed = [key_names[j] if key_names else str(j) for j, v in enumerate(row) if v]
+                if mb is not None and i < len(mb):
+                    mb_val = mb[i].item()
+                    if mb_val == 0:
+                        pressed.append('left_click')
+                    elif mb_val == 1:
+                        pressed.append('right_click')
+                actions.append('+'.join(sorted(pressed)) if pressed else 'none')
         else:
             actions = [None] * n
 
