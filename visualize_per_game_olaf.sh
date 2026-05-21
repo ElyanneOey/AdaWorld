@@ -21,9 +21,9 @@ cd ${SLURM_SUBMIT_DIR}
 #   plots/per_game/tsne/<game>_tsne.png
 #   plots/per_game/umap/<game>_umap.png
 
-BASE_ARGS="--dump-dir /gpfs/home3/scur0531/AdaWorld/latent_actions_dump \
+BASE_ARGS="--dump-dir /gpfs/home3/scur0531/AdaWorld/latent_actions_skipped \
     --source olafworld \
-    --out-dir ./plots \
+    --out-dir ./plots/olafworld \
     --max-samples 999999 \
     --per-game \
     --min-samples 20"
