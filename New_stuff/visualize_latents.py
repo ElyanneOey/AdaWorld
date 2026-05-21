@@ -57,7 +57,11 @@ def load_all_latents(dump_dir: str, max_samples: int | None = None, source_filte
         rel_parts = Path(f).relative_to(dump_dir).parts
         source    = rel_parts[0]   # e.g. adaworld / olafworld
         game_name = rel_parts[1]   # e.g. retro_8eyes-nes_v0.0.0 or uuid
-        data = torch.load(f, map_location='cpu')
+        try:
+            data = torch.load(f, map_location='cpu')
+        except Exception as e:
+            print(f"  Skipping {f}: {e}")
+            continue
 
         z = data['z_mu']
         if z is None:
@@ -86,7 +90,7 @@ def load_all_latents(dump_dir: str, max_samples: int | None = None, source_filte
                 if a is None:
                     return None
                 if isinstance(a, dict):
-                    return a.get('description', str(sorted(a.items())))
+                    return a.get('desc', a.get('description', str(sorted(a.items()))))
                 if isinstance(a, (list, np.ndarray, torch.Tensor)):
                     try:
                         return str(tuple(int(x) for x in a))
