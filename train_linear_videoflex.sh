@@ -20,7 +20,7 @@ python New_stuff/train_linear.py \
     --batch_size 256 \
     --action_hidden_layers 0 \
     --game_hidden_layers 0 \
-    --dataset adaworld \
     --dump-dir /gpfs/home3/scur0531/AdaWorld/latent_actions_videoflextok \
+    --no-source \
     --per_game \
     --out-csv ./results/videoflextok/per_game_action_accuracy.csv
