@@ -15,7 +15,7 @@ source activate adaworld_elyanne
 
 cd ${SLURM_SUBMIT_DIR}
 
-python new_stuff/train_linear.py \
+python New_stuff/train_linear.py \
     --epochs 100 \
     --batch_size 256 \
     --action_hidden_layers 0 \
