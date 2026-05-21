@@ -21,7 +21,7 @@ cd ${SLURM_SUBMIT_DIR}
 #   plots/sweep/tsne/  -- perplexity 5, 30, 50, 100   x {action, game}
 #   plots/sweep/umap/  -- 3 n_neighbors x 3 min_dist  x {action, game}
 python New_stuff/visualize_latents.py \
-    --dump-dir /gpfs/home3/scur0531/AdaWorld/latent_actions_dump2 \
+    --dump-dir /gpfs/home3/scur0531/AdaWorld/latent_actions_dump_2 \
     --source olafworld \
     --out-dir ./plots/p2p/olafworld \
     --max-samples 10000 \
