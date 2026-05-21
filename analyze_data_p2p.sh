@@ -16,8 +16,8 @@ source activate adaworld_elyanne
 cd ${SLURM_SUBMIT_DIR}
 
 python New_stuff/analyze_data.py \
-    --dump-dir /gpfs/home3/scur0531/AdaWorld/latent_actions_dump \
+    --dump-dir /gpfs/home3/scur0531/AdaWorld/latent_actions_dump_2 \
     --source adaworld \
-    --out-dir ./plots/analysis \
+    --out-dir ./plots/analysis/p2p \
     --results-dir ./results \
-    --video-dir /gpfs/home3/scur0531/random_actions_data/dataset/retro_act_v0.0.0_random
+    --video-dir /scratch-shared/FoMo-Atomic-Actions/open-p2p-subset

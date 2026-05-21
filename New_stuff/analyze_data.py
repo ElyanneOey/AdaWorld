@@ -28,23 +28,74 @@ import numpy as np
 import torch
 
 
+# ========================== Helpers =========================================
+
+def _to_action_key(action):
+    """Convert any action format to a human-readable string key."""
+    if action is None:
+        return None
+    if isinstance(action, dict):
+        return action.get('desc', action.get('description', str(sorted(action.items()))))
+    try:
+        return str(tuple(int(x) for x in action))
+    except (TypeError, ValueError):
+        return str(action)
+
+
+def _decode_keyboard(keyboard_labels, keyboard_keys=None):
+    """Decode p2p multi-hot keyboard_labels into action strings like 'w+space'."""
+    if isinstance(keyboard_labels, torch.Tensor):
+        kl = keyboard_labels.tolist()
+    else:
+        kl = list(keyboard_labels)
+    if not kl:
+        return []
+    if isinstance(kl[0], str):
+        return kl
+    if keyboard_keys is not None:
+        kk = keyboard_keys.tolist() if isinstance(keyboard_keys, torch.Tensor) else list(keyboard_keys)
+        key_names = [str(k) for k in kk]
+    else:
+        key_names = None
+    result = []
+    for label in kl:
+        if isinstance(label, (list, tuple)) and key_names and len(label) == len(key_names):
+            pressed = [key_names[i] for i, v in enumerate(label) if v]
+            result.append('+'.join(sorted(pressed)) if pressed else 'none')
+        else:
+            result.append(str(label))
+    return result
+
+
+def _get_game_name(path, dump_dir, data):
+    """Return game name: from .pt dict if available (p2p), else from path."""
+    if 'game_name' in data:
+        return str(data['game_name'])
+    return Path(path).relative_to(dump_dir).parts[1]
+
+
 # ========================== Data loading ====================================
 
 def load_action_stats(dump_dir: str, source: str | None = None):
     """Return per-game action counts and total latent counts from .pt files."""
-    pattern = (f'{dump_dir}/{source}/*/*/*/latent_actions.pt' if source
-               else f'{dump_dir}/*/*/*/latent_actions.pt')
-    files = sorted(glob.glob(pattern))
+    files = sorted(glob.glob(os.path.join(dump_dir, '**', 'latent_actions.pt'), recursive=True))
+    if source:
+        files = [f for f in files if Path(f).relative_to(dump_dir).parts[0] == source]
     if not files:
-        raise RuntimeError(f"No latent_actions.pt files found with pattern: {pattern}")
+        raise RuntimeError(f"No latent_actions.pt files found under {dump_dir}")
     print(f"Found {len(files)} files")
 
     game_action_counts = defaultdict(lambda: defaultdict(int))
     game_total_counts  = defaultdict(int)
 
     for f in files:
-        game = Path(f).parts[-4]
-        data = torch.load(f, map_location='cpu')
+        try:
+            data = torch.load(f, map_location='cpu')
+        except Exception as e:
+            print(f"  Skipping {f}: {e}")
+            continue
+
+        game = _get_game_name(f, dump_dir, data)
 
         z_mu = data.get('z_mu')
         if z_mu is None:
@@ -52,17 +103,21 @@ def load_action_stats(dump_dir: str, source: str | None = None):
         n = z_mu.shape[0] if hasattr(z_mu, 'shape') else len(z_mu)
         game_total_counts[game] += n
 
+        # p2p: keyboard_labels instead of actions
+        if 'keyboard_labels' in data and data.get('actions') is None:
+            action_keys = _decode_keyboard(data['keyboard_labels'], data.get('keyboard_keys'))
+            for key in action_keys:
+                if key is not None:
+                    game_action_counts[game][key] += 1
+            continue
+
         actions_raw = data.get('actions')
         if actions_raw is None:
             continue
         for action in actions_raw:
-            if action is None:
-                continue
-            try:
-                key = str(tuple(int(x) for x in action))
-            except (TypeError, ValueError):
-                key = str(action)
-            game_action_counts[game][key] += 1
+            key = _to_action_key(action)
+            if key is not None:
+                game_action_counts[game][key] += 1
 
     print(f"Loaded stats for {len(game_total_counts)} games")
     return game_action_counts, game_total_counts
@@ -264,9 +319,9 @@ def compute_frame_deltas(dump_dir: str, video_dir: str, source: str | None = Non
         game_mid_delta         : {game: mean_delta over middle third of frames}
         game_late_delta        : {game: mean_delta over last third of frames}
     """
-    pattern = (f'{dump_dir}/{source}/*/*/*/latent_actions.pt' if source
-               else f'{dump_dir}/*/*/*/latent_actions.pt')
-    files = sorted(glob.glob(pattern))
+    files = sorted(glob.glob(os.path.join(dump_dir, '**', 'latent_actions.pt'), recursive=True))
+    if source:
+        files = [f for f in files if Path(f).relative_to(dump_dir).parts[0] == source]
 
     game_action_deltas = defaultdict(lambda: defaultdict(list))
     game_video_deltas  = defaultdict(list)
@@ -275,14 +330,20 @@ def compute_frame_deltas(dump_dir: str, video_dir: str, source: str | None = Non
     game_late_deltas   = defaultdict(list)
 
     for f in files:
-        parts = Path(f).parts
-        game, seed, episode = parts[-4], parts[-3], parts[-2]
+        parts = Path(f).relative_to(dump_dir).parts
+        # Retro data: source/game/seed/episode/latent_actions.pt
+        if len(parts) < 4:
+            continue
+        game, seed, episode = parts[1], parts[2], parts[3]
 
         frames_dir = os.path.join(video_dir, game, seed, episode, 'frames')
         if not os.path.isdir(frames_dir):
             continue
 
-        data = torch.load(f, map_location='cpu')
+        try:
+            data = torch.load(f, map_location='cpu')
+        except Exception:
+            continue
         actions_raw = data.get('actions')
         if actions_raw is None:
             continue
@@ -298,13 +359,9 @@ def compute_frame_deltas(dump_dir: str, video_dir: str, source: str | None = Non
             video_deltas.append(delta)
 
             action = actions_raw[i]
-            if action is None:
-                continue
-            try:
-                key = str(tuple(int(x) for x in action))
-            except (TypeError, ValueError):
-                continue
-            game_action_deltas[game][key].append(delta)
+            key = _to_action_key(action)
+            if key is not None:
+                game_action_deltas[game][key].append(delta)
 
         if video_deltas:
             game_video_deltas[game].append(float(np.mean(video_deltas)))
