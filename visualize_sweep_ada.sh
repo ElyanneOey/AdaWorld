@@ -30,4 +30,5 @@ python New_stuff/visualize_latents.py \
     --sweep-color both \
     --umap-n-neighbors 15,50,100 \
     --umap-min-dist 0.1,0.5,0.8 \
-    --tsne-perplexity 5,30,50,100
+    --tsne-perplexity 5,30,50,100 \
+    --filter-actions "right,left,crouch,jump"

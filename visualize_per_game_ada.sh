@@ -26,7 +26,8 @@ BASE_ARGS="--dump-dir /gpfs/home3/scur0531/AdaWorld/latent_actions_skipped \
     --out-dir ./plots/adaworld \
     --max-samples 999999 \
     --per-game \
-    --min-samples 20"
+    --min-samples 20" \
+    --filter-actions "right,left,crouch,jump"
 
 echo "=== PCA per game ==="
 python New_stuff/visualize_latents.py $BASE_ARGS \

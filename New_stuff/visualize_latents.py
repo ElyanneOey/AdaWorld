@@ -86,7 +86,7 @@ def load_all_latents(dump_dir: str, max_samples: int | None = None, source_filte
                 if a is None:
                     return None
                 if isinstance(a, dict):
-                    return str(sorted(a.items()))
+                    return a.get('description', str(sorted(a.items())))
                 if isinstance(a, (list, np.ndarray, torch.Tensor)):
                     try:
                         return str(tuple(int(x) for x in a))
@@ -443,6 +443,8 @@ def parse_args():
                    help='Method to use for per-game plots (default: pca)')
     p.add_argument('--min-samples', type=int, default=20,
                    help='Skip games with fewer than this many samples in per-game mode')
+    p.add_argument('--filter-actions', type=str, default=None,
+                   help='Comma-separated list of action descriptions to keep, e.g. "right,left,crouch,jump"')
     return p.parse_args()
 
 
@@ -454,6 +456,16 @@ def main():
     z, actions, games, sources = load_all_latents(
         args.dump_dir, max_samples=args.max_samples, source_filter=args.source)
     print(f"z shape: {z.shape}")
+
+    if args.filter_actions:
+        keep = set(a.strip() for a in args.filter_actions.split(','))
+        mask = [a in keep for a in actions]
+        z       = z[mask]
+        actions = [a for a, m in zip(actions, mask) if m]
+        games   = [g for g, m in zip(games,   mask) if m]
+        sources = [s for s, m in zip(sources,  mask) if m]
+        print(f"After filtering to {keep}: {len(z)} samples remaining")
+
     multiple_sources = len(set(sources)) > 1
 
     # --- PCA ---
