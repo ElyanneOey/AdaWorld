@@ -79,21 +79,19 @@ def _decode_keyboard_actions(keyboard_labels, keyboard_keys=None):
             result.append(str(label))
     return result
 
-def load_all_latents(dump_dir: str, max_samples: int | None = None, source_filter: str | None = None):
+def load_all_latents(dump_dir: str, max_samples: int | None = None,
+                     source_filter: str | None = None, no_source: bool = False):
     """Load all latent_actions.pt files and return stacked tensors with labels.
 
-    Path structure expected:
-        dump_dir/<source>/<game>/<seed>/<episode>/latent_actions.pt
-    e.g. latent_actions_dump/adaworld/retro_8eyes-nes_v0.0.0/0/0/latent_actions.pt
-
-    source_filter: if set, only load files whose source folder matches this name
-                   (e.g. 'adaworld' or 'olafworld')
+    Two supported layouts:
+      Standard:  dump_dir/<source>/<game>/...   (use --source to filter)
+      No-source: dump_dir/<game>/...            (use --no-source flag)
     """
     files = sorted(glob.glob(os.path.join(dump_dir, '**', 'latent_actions.pt'), recursive=True))
     if not files:
         raise RuntimeError(f"No latent_actions.pt files found under {dump_dir}")
 
-    if source_filter:
+    if not no_source and source_filter:
         files = [f for f in files if Path(f).relative_to(dump_dir).parts[0] == source_filter]
         if not files:
             raise RuntimeError(f"No files found for source '{source_filter}' under {dump_dir}")
@@ -105,11 +103,17 @@ def load_all_latents(dump_dir: str, max_samples: int | None = None, source_filte
     all_games = []
     all_sources = []
 
+    pseudo_source = Path(dump_dir).name  # used as source label when --no-source
+
     _printed_keys = False
     for f in files:
         rel_parts = Path(f).relative_to(dump_dir).parts
-        source    = rel_parts[0]   # e.g. adaworld / olafworld
-        game_name = rel_parts[1]   # e.g. retro_8eyes-nes_v0.0.0 or uuid
+        if no_source:
+            source    = pseudo_source   # e.g. 'latent_actions_videoflextok'
+            game_name = rel_parts[0]    # game folder is directly under dump_dir
+        else:
+            source    = rel_parts[0]    # e.g. adaworld / olafworld
+            game_name = rel_parts[1]    # e.g. retro_8eyes-nes_v0.0.0 or uuid
         try:
             data = torch.load(f, map_location='cpu')
         except Exception as e:
@@ -509,6 +513,8 @@ def parse_args():
                    help='Skip games with fewer than this many samples in per-game mode')
     p.add_argument('--filter-actions', type=str, default=None,
                    help='Comma-separated list of action descriptions to keep, e.g. "right,left,crouch,jump"')
+    p.add_argument('--no-source', action='store_true',
+                   help='Data has no source subfolder: dump-dir/<game>/... instead of dump-dir/<source>/<game>/...')
     return p.parse_args()
 
 
@@ -518,7 +524,8 @@ def main():
 
     print("Loading latents...")
     z, actions, games, sources = load_all_latents(
-        args.dump_dir, max_samples=args.max_samples, source_filter=args.source)
+        args.dump_dir, max_samples=args.max_samples,
+        source_filter=args.source, no_source=args.no_source)
     print(f"z shape: {z.shape}")
 
     if args.filter_actions:

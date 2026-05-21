@@ -5,7 +5,7 @@
 #SBATCH --job-name=analyze_data
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --time=01:00:00
+#SBATCH --time=04:00:00
 #SBATCH --output=logs/analyze_data_%A.out
 
 module purge

@@ -20,12 +20,14 @@ def build_mlp(in_dim, out_dim, n_hidden, hidden_dim=256):
     layers.append(nn.Linear(hidden_dim, out_dim))
     return nn.Sequential(*layers)
 
-def _get_game_name(path, dump_dir, data=None):
+def _get_game_name(path, dump_dir, data=None, no_source=False):
     # p2p files store the real game name inside the .pt dict
     if data is not None and 'game_name' in data:
         return str(data['game_name'])
-    # Fall back to second path component: dump_dir/<source>/<game>/...
-    return Path(path).relative_to(dump_dir).parts[1]
+    parts = Path(path).relative_to(dump_dir).parts
+    # no-source layout: dump_dir/<game>/...  → parts[0] is game
+    # standard layout:  dump_dir/<source>/<game>/... → parts[1] is game
+    return parts[0] if no_source else parts[1]
 
 
 def _extract_actions(data):
@@ -82,9 +84,11 @@ def _build_dataset(samples):
     return z, actions, games
 
 
-def load_data(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent_actions_dump'):
+def load_data(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent_actions_dump', no_source=False):
     import os as _os
-    if dataset == 'both':
+    if no_source:
+        files = sorted(glob.glob(_os.path.join(dump_dir, '**', 'latent_actions.pt'), recursive=True))
+    elif dataset == 'both':
         files = sorted(glob.glob(_os.path.join(dump_dir, '**', 'latent_actions.pt'), recursive=True))
     else:
         files = sorted(glob.glob(_os.path.join(dump_dir, dataset, '**', 'latent_actions.pt'), recursive=True))
@@ -101,7 +105,7 @@ def load_data(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent_actions_
             print(f"Skipping {f}: {e}")
             continue
 
-        game_name = _get_game_name(f, dump_dir, data)
+        game_name = _get_game_name(f, dump_dir, data, no_source=no_source)
 
         actions, _ = _extract_actions(data)
         if actions is None or len(actions) == 0:
@@ -287,10 +291,12 @@ def evaluate_multiclass_model(model, loader, unique_games, device, target_index=
     }
     return total_accuracy, per_game_accuracy
 
-def load_data_per_game(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent_actions_dump'):
+def load_data_per_game(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent_actions_dump', no_source=False):
     """Load data grouped by game. Returns dict: game_name -> (train_dataset, test_dataset, num_actions, action_mode)."""
     import os as _os
-    if dataset == 'both':
+    if no_source:
+        files = sorted(glob.glob(_os.path.join(dump_dir, '**', 'latent_actions.pt'), recursive=True))
+    elif dataset == 'both':
         files = sorted(glob.glob(_os.path.join(dump_dir, '**', 'latent_actions.pt'), recursive=True))
     else:
         files = sorted(glob.glob(_os.path.join(dump_dir, dataset, '**', 'latent_actions.pt'), recursive=True))
@@ -306,7 +312,7 @@ def load_data_per_game(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent
             print(f"Skipping {f}: {e}")
             continue
 
-        game_name = _get_game_name(f, dump_dir, data)
+        game_name = _get_game_name(f, dump_dir, data, no_source=no_source)
 
         actions, _ = _extract_actions(data)
         if actions is None or len(actions) == 0:
@@ -447,13 +453,15 @@ def main():
     parser.add_argument('--mask', type=int, nargs='*', default=[],
                         help='Dimensions to zero out during training (e.g. --mask 0 3 5)')
     parser.add_argument('--dataset', type=str, default='both', choices=['adaworld', 'olafworld', 'both'],
-                        help='Which dataset to train on (default: both)')
+                        help='Which dataset to train on (default: both). Ignored when --no-source is set.')
     parser.add_argument('--dump-dir', type=str, default='latent_actions_dump',
                         help='Root of the latent_actions_dump folder (default: ./latent_actions_dump)')
     parser.add_argument('--out-csv', type=str, default=None,
                         help='Path to save per-game results as CSV (e.g. ./results/per_game.csv)')
     parser.add_argument('--per_game', action='store_true',
                         help='Train a separate model for each game instead of a single shared model')
+    parser.add_argument('--no-source', action='store_true',
+                        help='Data has no source subfolder: dump-dir/<game>/... instead of dump-dir/<source>/<game>/...')
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -461,7 +469,8 @@ def main():
 
     if args.per_game:
         print("Loading per-game data...")
-        game_datasets = load_data_per_game(dataset=args.dataset, dump_dir=args.dump_dir)
+        game_datasets = load_data_per_game(dataset=args.dataset, dump_dir=args.dump_dir,
+                                           no_source=args.no_source)
         print(f"Games: {list(game_datasets.keys())}")
         per_game_results = train_per_game(game_datasets, args, device)
         print(f"\n{'='*60}")
@@ -483,7 +492,7 @@ def main():
         return
 
     print("Loading data...")
-    train_dataset, test_dataset, num_actions, unique_games, action_mode = load_data(dataset=args.dataset, dump_dir=args.dump_dir)
+    train_dataset, test_dataset, num_actions, unique_games, action_mode = load_data(dataset=args.dataset, dump_dir=args.dump_dir, no_source=args.no_source)
     print(f"Train samples: {len(train_dataset)}, Test samples: {len(test_dataset)}")
     print(f"Games: {unique_games}")
 
