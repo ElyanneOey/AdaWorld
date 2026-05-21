@@ -27,6 +27,58 @@ from sklearn.preprocessing import LabelEncoder
 
 # ========================== Data Loading ====================================
 
+def _decode_keyboard_actions(keyboard_labels, keyboard_keys=None):
+    """Convert p2p keyboard_labels to human-readable action strings.
+
+    keyboard_labels: tensor (N, K) multi-hot  OR  list of strings  OR  list of ints
+    keyboard_keys:   list/tensor of K key name strings, e.g. ['w','a','s','d',...]
+    Returns a list of N strings like 'w', 'w+a', 'none'.
+    """
+    if isinstance(keyboard_labels, torch.Tensor):
+        kl = keyboard_labels.tolist()
+    elif not isinstance(keyboard_labels, list):
+        kl = list(keyboard_labels)
+    else:
+        kl = keyboard_labels
+
+    if not kl:
+        return []
+
+    # Already strings — nothing to decode
+    if isinstance(kl[0], str):
+        return kl
+
+    # Resolve key name list
+    if keyboard_keys is not None:
+        if isinstance(keyboard_keys, torch.Tensor):
+            key_names = keyboard_keys.tolist()
+        elif not isinstance(keyboard_keys, list):
+            key_names = list(keyboard_keys)
+        else:
+            key_names = keyboard_keys
+        key_names = [str(k) for k in key_names]
+    else:
+        key_names = None
+
+    result = []
+    for label in kl:
+        if isinstance(label, (int, float)):
+            # Single class index
+            if key_names and int(label) < len(key_names):
+                result.append(key_names[int(label)])
+            else:
+                result.append(str(int(label)))
+        elif isinstance(label, (list, tuple)):
+            if key_names and len(label) == len(key_names):
+                # Multi-hot vector: collect all pressed keys
+                pressed = [key_names[i] for i, v in enumerate(label) if v]
+                result.append('+'.join(sorted(pressed)) if pressed else 'none')
+            else:
+                result.append(str(label))
+        else:
+            result.append(str(label))
+    return result
+
 def load_all_latents(dump_dir: str, max_samples: int | None = None, source_filter: str | None = None):
     """Load all latent_actions.pt files and return stacked tensors with labels.
 
@@ -80,7 +132,11 @@ def load_all_latents(dump_dir: str, max_samples: int | None = None, source_filte
         n = z.shape[0]
 
         # Actions (may not always be present, may contain None values)
+        # p2p data uses keyboard_labels/keyboard_keys instead of actions
         actions = data.get('actions', None)
+        if actions is None and 'keyboard_labels' in data:
+            actions = _decode_keyboard_actions(
+                data['keyboard_labels'], data.get('keyboard_keys', None))
         if actions is not None:
             if isinstance(actions, torch.Tensor):
                 actions = actions.tolist()
@@ -192,7 +248,7 @@ def scatter_plot_3d(
         classes = top_classes
 
     n = len(classes)
-    cmap = plt.cm.get_cmap('tab20', n) if n <= 20 else plt.cm.get_cmap('gist_rainbow', n)
+    cmap = plt.colormaps['tab20'].resampled(n) if n <= 20 else plt.colormaps['gist_rainbow'].resampled(n)
 
     fig = plt.figure(figsize=(14, 9))
     ax = fig.add_subplot(111, projection='3d')
@@ -257,7 +313,7 @@ def scatter_plot(
         classes = top_classes
 
     n = len(classes)
-    cmap = plt.cm.get_cmap('tab20', n) if n <= 20 else plt.cm.get_cmap('gist_rainbow', n)
+    cmap = plt.colormaps['tab20'].resampled(n) if n <= 20 else plt.colormaps['gist_rainbow'].resampled(n)
 
     _, ax = plt.subplots(figsize=(14, 8))
     ax.scatter(
