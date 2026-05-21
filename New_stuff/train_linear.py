@@ -20,19 +20,59 @@ def build_mlp(in_dim, out_dim, n_hidden, hidden_dim=256):
     layers.append(nn.Linear(hidden_dim, out_dim))
     return nn.Sequential(*layers)
 
-def _get_game_name(path):
-    return Path(path).parts[-4]  # .../adaworld/<game>/<seed>/<episode>/latent_actions.pt
+def _get_game_name(path, dump_dir, data=None):
+    # p2p files store the real game name inside the .pt dict
+    if data is not None and 'game_name' in data:
+        return str(data['game_name'])
+    # Fall back to second path component: dump_dir/<source>/<game>/...
+    return Path(path).relative_to(dump_dir).parts[1]
 
 
-def _format_actions(actions, num_samples, file_path):
-    actions = torch.as_tensor(actions)
-    if actions.ndim == 0:
-        actions = actions.unsqueeze(0)
-    if actions.shape[0] != num_samples:
-        raise ValueError(
-            f"Action count mismatch in {file_path}: z_mu has {num_samples} samples but actions has shape {tuple(actions.shape)}"
-        )
-    return actions
+def _extract_actions(data):
+    """Return (actions_tensor, action_names_or_None) from a loaded .pt dict.
+
+    Handles three cases:
+      - p2p: keyboard_labels (N x K multi-hot float tensor)
+      - skipped: list of dicts with 'desc' key → encoded as class indices
+      - retro: raw numeric tensor
+    """
+    raw = data.get('actions')
+
+    # p2p keyboard data
+    if raw is None and 'keyboard_labels' in data:
+        kl = data['keyboard_labels']
+        kl = kl.float() if isinstance(kl, torch.Tensor) else torch.tensor(kl, dtype=torch.float32)
+        if kl.ndim == 1:
+            kl = kl.unsqueeze(0)
+        kk = data.get('keyboard_keys')
+        key_names = [str(k) for k in (kk.tolist() if isinstance(kk, torch.Tensor) else list(kk))] if kk is not None else None
+        return kl, key_names
+
+    if raw is None:
+        return None, None
+    if isinstance(raw, torch.Tensor):
+        raw = raw.tolist()
+    elif not isinstance(raw, list):
+        try:
+            raw = list(raw)
+        except Exception:
+            return None, None
+    if not raw:
+        return None, None
+
+    # Dict actions with 'desc'/'description' key (skipped dataset)
+    if isinstance(raw[0], dict):
+        labels = [a.get('desc', a.get('description', str(sorted(a.items())))) for a in raw]
+        unique_labels = sorted(set(labels))
+        label_to_idx = {l: i for i, l in enumerate(unique_labels)}
+        return torch.tensor([label_to_idx[l] for l in labels], dtype=torch.long), unique_labels
+
+    # Standard numeric actions
+    try:
+        t = torch.as_tensor(raw)
+        return (t.unsqueeze(0) if t.ndim == 0 else t), None
+    except Exception:
+        return None, None
 
 
 def _build_dataset(samples):
@@ -43,41 +83,44 @@ def _build_dataset(samples):
 
 
 def load_data(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent_actions_dump'):
+    import os as _os
     if dataset == 'both':
-        files = sorted(glob.glob(f'{dump_dir}/*/*/*/*/latent_actions.pt'))
+        files = sorted(glob.glob(_os.path.join(dump_dir, '**', 'latent_actions.pt'), recursive=True))
     else:
-        files = sorted(glob.glob(f'{dump_dir}/{dataset}/*/*/*/latent_actions.pt'))
+        files = sorted(glob.glob(_os.path.join(dump_dir, dataset, '**', 'latent_actions.pt'), recursive=True))
     if not files:
-        raise RuntimeError('No latent_actions.pt files found under latent_actions_dump/.')
+        raise RuntimeError(f'No latent_actions.pt files found under {dump_dir}.')
 
     samples_by_game = defaultdict(list)
     unique_games = []
 
     for f in files:
-        game_name = _get_game_name(f)
-        if game_name not in samples_by_game:
-            unique_games.append(game_name)
+        try:
+            data = torch.load(f, map_location='cpu')
+        except Exception as e:
+            print(f"Skipping {f}: {e}")
+            continue
 
-        data = torch.load(f, map_location='cpu')
-        
-        # Skip files that don't have actions (e.g. actions.json was missing)
-        actions_raw = data.get('actions')
-        if actions_raw is None or len(actions_raw) == 0:
-            print(f"Skipping {f} because no actions were found.")
+        game_name = _get_game_name(f, dump_dir, data)
+
+        actions, _ = _extract_actions(data)
+        if actions is None or len(actions) == 0:
+            print(f"Skipping {f}: no actions found.")
             continue
 
         z = torch.as_tensor(data['z_mu'], dtype=torch.float32)
         if z.ndim == 1:
             z = z.unsqueeze(0)
 
-        try:
-            actions = _format_actions(actions_raw, z.shape[0], f)
-        except (RuntimeError, TypeError, ValueError) as e:
-            print(f"Skipping {f}: {e}")
-            continue
+        n = min(z.shape[0], actions.shape[0])
+        z = z[:n]
+        actions = actions[:n]
+
         if actions.ndim == 2 and actions.shape[1] == 1 and torch.all(actions == actions.long().to(actions.dtype)):
             actions = actions.squeeze(1)
 
+        if game_name not in samples_by_game:
+            unique_games.append(game_name)
         for sample_z, sample_action in zip(z, actions):
             samples_by_game[game_name].append((sample_z, sample_action, game_name))
 
@@ -246,33 +289,38 @@ def evaluate_multiclass_model(model, loader, unique_games, device, target_index=
 
 def load_data_per_game(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent_actions_dump'):
     """Load data grouped by game. Returns dict: game_name -> (train_dataset, test_dataset, num_actions, action_mode)."""
+    import os as _os
     if dataset == 'both':
-        files = sorted(glob.glob(f'{dump_dir}/*/*/*/*/latent_actions.pt'))
+        files = sorted(glob.glob(_os.path.join(dump_dir, '**', 'latent_actions.pt'), recursive=True))
     else:
-        files = sorted(glob.glob(f'{dump_dir}/{dataset}/*/*/*/latent_actions.pt'))
+        files = sorted(glob.glob(_os.path.join(dump_dir, dataset, '**', 'latent_actions.pt'), recursive=True))
     if not files:
-        raise RuntimeError('No latent_actions.pt files found under latent_actions_dump/.')
+        raise RuntimeError(f'No latent_actions.pt files found under {dump_dir}.')
 
     samples_by_game = defaultdict(list)
 
     for f in files:
-        game_name = _get_game_name(f)
-        data = torch.load(f, map_location='cpu')
+        try:
+            data = torch.load(f, map_location='cpu')
+        except Exception as e:
+            print(f"Skipping {f}: {e}")
+            continue
 
-        actions_raw = data.get('actions')
-        if actions_raw is None or len(actions_raw) == 0:
-            print(f"Skipping {f} because no actions were found.")
+        game_name = _get_game_name(f, dump_dir, data)
+
+        actions, _ = _extract_actions(data)
+        if actions is None or len(actions) == 0:
+            print(f"Skipping {f}: no actions found.")
             continue
 
         z = torch.as_tensor(data['z_mu'], dtype=torch.float32)
         if z.ndim == 1:
             z = z.unsqueeze(0)
 
-        try:
-            actions = _format_actions(actions_raw, z.shape[0], f)
-        except (RuntimeError, TypeError, ValueError) as e:
-            print(f"Skipping {f}: {e}")
-            continue
+        n = min(z.shape[0], actions.shape[0])
+        z = z[:n]
+        actions = actions[:n]
+
         if actions.ndim == 2 and actions.shape[1] == 1 and torch.all(actions == actions.long().to(actions.dtype)):
             actions = actions.squeeze(1)
 
