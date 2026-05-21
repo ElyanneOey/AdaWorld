@@ -42,7 +42,7 @@ def load_all_latents(dump_dir: str, max_samples: int | None = None, source_filte
         raise RuntimeError(f"No latent_actions.pt files found under {dump_dir}")
 
     if source_filter:
-        files = [f for f in files if Path(f).parts[-5] == source_filter]
+        files = [f for f in files if Path(f).relative_to(dump_dir).parts[0] == source_filter]
         if not files:
             raise RuntimeError(f"No files found for source '{source_filter}' under {dump_dir}")
 
@@ -54,9 +54,9 @@ def load_all_latents(dump_dir: str, max_samples: int | None = None, source_filte
     all_sources = []
 
     for f in files:
-        parts = Path(f).parts
-        game_name = parts[-4]   # e.g. retro_8eyes-nes_v0.0.0
-        source    = parts[-5]   # e.g. adaworld / olafworld
+        rel_parts = Path(f).relative_to(dump_dir).parts
+        source    = rel_parts[0]   # e.g. adaworld / olafworld
+        game_name = rel_parts[1]   # e.g. retro_8eyes-nes_v0.0.0 or uuid
         data = torch.load(f, map_location='cpu')
 
         z = data['z_mu']
@@ -459,6 +459,8 @@ def main():
 
     if args.filter_actions:
         keep = set(a.strip() for a in args.filter_actions.split(','))
+        unique_labels = sorted(set(a for a in actions if a is not None))
+        print(f"Unique action labels found ({len(unique_labels)}): {unique_labels[:30]}")
         mask = [a in keep for a in actions]
         z       = z[mask]
         actions = [a for a, m in zip(actions, mask) if m]
