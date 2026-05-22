@@ -368,9 +368,16 @@ def run_sweep(
     umap_min_dist: list = None,
     tsne_perplexity: list = None,
     pca_pairs: list = None,
+    z_action: np.ndarray = None,
+    actions_action: list = None,
 ) -> None:
     """Run one method across a grid of hyperparameter values and save one plot per setting."""
-    labels = actions if color_by == 'action' else games
+    if color_by == 'action' and z_action is not None:
+        z_use = z_action
+        labels = actions_action
+    else:
+        z_use = z
+        labels = actions if color_by == 'action' else games
     sweep_dir = os.path.join(out_dir, 'sweep', method)
     os.makedirs(sweep_dir, exist_ok=True)
 
@@ -381,7 +388,7 @@ def run_sweep(
             for md in md_list:
                 tag = f"umap_nn{nn}_md{md}_{color_by}"
                 print(f"  UMAP nn={nn} min_dist={md} color={color_by}...")
-                emb = run_umap(z, n_components=2, n_neighbors=nn, min_dist=md)
+                emb = run_umap(z_use, n_components=2, n_neighbors=nn, min_dist=md)
                 scatter_plot(emb, labels,
                              f"UMAP (n_neighbors={nn}, min_dist={md}) — colored by {color_by}",
                              os.path.join(sweep_dir, f"{tag}.png"))
@@ -389,12 +396,12 @@ def run_sweep(
     elif method == 'tsne':
         perp_list = tsne_perplexity or [5, 30, 50, 100]
         for perp in perp_list:
-            if perp >= len(z):
-                print(f"  Skipping t-SNE perplexity={perp} (too large for {len(z)} samples)")
+            if perp >= len(z_use):
+                print(f"  Skipping t-SNE perplexity={perp} (too large for {len(z_use)} samples)")
                 continue
             tag = f"tsne_perp{perp}_{color_by}"
             print(f"  t-SNE perplexity={perp} color={color_by}...")
-            emb = run_tsne(z, perplexity=perp)
+            emb = run_tsne(z_use, perplexity=perp)
             scatter_plot(emb, labels,
                          f"t-SNE (perplexity={perp}) — colored by {color_by}",
                          os.path.join(sweep_dir, f"{tag}.png"))
@@ -402,8 +409,8 @@ def run_sweep(
     elif method == 'pca':
         pairs = pca_pairs or [(0, 1), (0, 2), (1, 2), (0, 3)]
         max_comp = max(max(p) for p in pairs) + 1
-        n_comp = min(max_comp, z.shape[1], z.shape[0])
-        full_emb, _ = run_pca(z, n_components=n_comp)
+        n_comp = min(max_comp, z_use.shape[1], z_use.shape[0])
+        full_emb, _ = run_pca(z_use, n_components=n_comp)
         for (i, j) in pairs:
             if i >= n_comp or j >= n_comp:
                 print(f"  Skipping PCA pair ({i},{j}): not enough components")
@@ -527,49 +534,61 @@ def main():
         unique_labels = sorted(set(a for a in actions if a is not None))
         print(f"Unique action labels found ({len(unique_labels)}): {unique_labels[:30]}")
         mask = [a in keep for a in actions]
-        z       = z[mask]
+        z       = z[np.array(mask)]
         actions = [a for a, m in zip(actions, mask) if m]
         games   = [g for g, m in zip(games,   mask) if m]
         sources = [s for s, m in zip(sources,  mask) if m]
         print(f"After filtering to {keep}: {len(z)} samples remaining")
 
-    multiple_sources = len(set(sources)) > 1
+    # For action-colored plots: keep only single-action samples (p2p has '+'-joined combos)
+    is_single = np.array([a is not None and a != 'none' and '+' not in str(a) for a in actions])
+    if is_single.any() and not is_single.all():
+        z_sa = z[is_single]
+        actions_sa = [a for a, s in zip(actions, is_single) if s]
+        games_sa   = [g for g, s in zip(games,   is_single) if s]
+        print(f"Single-action filter: {is_single.sum()}/{len(actions)} samples kept for action-colored plots")
+    else:
+        z_sa, actions_sa, games_sa = z, actions, games
 
     # --- PCA ---
     if args.method in ('pca', 'all'):
         print("\nRunning PCA...")
-        pca_2d, pca_full = run_pca(z, n_components=min(z.shape[1], z.shape[0]))
+        _, pca_full = run_pca(z, n_components=min(z.shape[1], z.shape[0]))
         pca_variance_plot(pca_full, os.path.join(args.out_dir, 'pca_variance.png'))
 
-        pca_2d, _ = run_pca(z, n_components=2)
-        scatter_plot(pca_2d, actions, 'PCA — colored by action',
+        pca_sa, _ = run_pca(z_sa, n_components=2)
+        scatter_plot(pca_sa, actions_sa, 'PCA — colored by action',
                      os.path.join(args.out_dir, 'pca_actions.png'))
+        pca_2d, _ = run_pca(z, n_components=2)
         scatter_plot(pca_2d, games, 'PCA — colored by game',
                      os.path.join(args.out_dir, 'pca_games.png'))
 
     # --- t-SNE ---
     if args.method in ('tsne', 'all'):
         print("\nRunning t-SNE (this may take a few minutes)...")
-        tsne_2d = run_tsne(z)
-        scatter_plot(tsne_2d, actions, 't-SNE — colored by action',
+        tsne_sa = run_tsne(z_sa)
+        scatter_plot(tsne_sa, actions_sa, 't-SNE — colored by action',
                      os.path.join(args.out_dir, 'tsne_actions.png'))
+        tsne_2d = run_tsne(z)
         scatter_plot(tsne_2d, games, 't-SNE — colored by game',
                      os.path.join(args.out_dir, 'tsne_games.png'))
 
     # --- UMAP ---
     if args.method in ('umap', 'all'):
         print("\nRunning UMAP (2D)...")
-        umap_2d = run_umap(z, n_components=2)
-        scatter_plot(umap_2d, actions, 'UMAP — colored by action',
+        umap_sa = run_umap(z_sa, n_components=2)
+        scatter_plot(umap_sa, actions_sa, 'UMAP — colored by action',
                      os.path.join(args.out_dir, 'umap_actions.png'))
+        umap_2d = run_umap(z, n_components=2)
         scatter_plot(umap_2d, games, 'UMAP — colored by game',
                      os.path.join(args.out_dir, 'umap_games.png'))
 
         if args.umap_3d:
             print("\nRunning UMAP (3D)...")
-            umap_3d = run_umap(z, n_components=3)
-            scatter_plot_3d(umap_3d, actions, 'UMAP 3D — colored by action',
+            umap_3d_sa = run_umap(z_sa, n_components=3)
+            scatter_plot_3d(umap_3d_sa, actions_sa, 'UMAP 3D — colored by action',
                             os.path.join(args.out_dir, 'umap_3d_actions.png'))
+            umap_3d = run_umap(z, n_components=3)
             scatter_plot_3d(umap_3d, games, 'UMAP 3D — colored by game',
                             os.path.join(args.out_dir, 'umap_3d_games.png'))
 
@@ -586,11 +605,12 @@ def main():
                 run_sweep(z, actions, games, args.out_dir, method=m,
                           color_by=color_by,
                           umap_n_neighbors=nn_list, umap_min_dist=md_list,
-                          tsne_perplexity=perp_list)
+                          tsne_perplexity=perp_list,
+                          z_action=z_sa, actions_action=actions_sa)
 
     # --- Per-game ---
     if args.per_game:
-        run_per_game(z, actions, games, args.out_dir,
+        run_per_game(z_sa, actions_sa, games_sa, args.out_dir,
                      method=args.per_game_method,
                      min_samples=args.min_samples)
 
