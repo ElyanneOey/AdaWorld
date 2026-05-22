@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --time=01:00:00
-#SBATCH --output=logs/train_linear_video_h1_%A.out
+#SBATCH --output=logs/train_linear_video_h3_%A.out
 
 module purge
 module load 2024
