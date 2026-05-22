@@ -481,14 +481,17 @@ def main():
         print("\nComputing frame deltas (this may take a while)...")
         delta_stats, game_video_deltas, game_overall_delta, game_early_delta, game_mid_delta, game_late_delta = \
             compute_frame_deltas(args.dump_dir, args.video_dir, args.source)
-        plot_frame_delta(delta_stats,
-                         os.path.join(args.out_dir, 'frame_delta_per_action.png'))
-        plot_frame_delta_per_game_overall(game_overall_delta,
-                                          os.path.join(args.out_dir, 'frame_delta_overall_per_game.png'))
-        plot_frame_delta_distribution(game_video_deltas,
-                                      os.path.join(args.out_dir, 'frame_delta_distribution.png'))
-        plot_frame_delta_early_mid_late(game_early_delta, game_mid_delta, game_late_delta,
-                                        os.path.join(args.out_dir, 'frame_delta_early_mid_late.png'))
+        if not delta_stats:
+            print("  No frame delta results (video layout may not match this dataset — skipping frame delta plots)")
+        else:
+            plot_frame_delta(delta_stats,
+                             os.path.join(args.out_dir, 'frame_delta_per_action.png'))
+            plot_frame_delta_per_game_overall(game_overall_delta,
+                                              os.path.join(args.out_dir, 'frame_delta_overall_per_game.png'))
+            plot_frame_delta_distribution(game_video_deltas,
+                                          os.path.join(args.out_dir, 'frame_delta_distribution.png'))
+            plot_frame_delta_early_mid_late(game_early_delta, game_mid_delta, game_late_delta,
+                                            os.path.join(args.out_dir, 'frame_delta_early_mid_late.png'))
         save_frame_delta_csv(delta_stats, game_overall_delta,
                              os.path.join(args.results_dir, 'frame_delta.csv'))
     else:

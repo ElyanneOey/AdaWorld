@@ -435,10 +435,15 @@ def train_per_game(game_datasets, args, device):
         model.eval()
         total_correct = 0.0
         total_count = 0
-        # For multilabel: track per-key correct/total and baseline (all-zeros)
-        per_key_correct = None
-        per_key_total = 0
+        # Multilabel (p2p) accumulators
+        exact_match_correct = 0.0
+        hamming_wrong = 0.0
+        hamming_total = 0
+        per_key_tp = torch.zeros(num_actions) if action_mode == 'multilabel' else None
+        per_key_fp = torch.zeros(num_actions) if action_mode == 'multilabel' else None
+        per_key_fn = torch.zeros(num_actions) if action_mode == 'multilabel' else None
         baseline_correct = 0.0
+
         with torch.no_grad():
             for batch_z, batch_actions in test_loader:
                 batch_z = batch_z.to(device)
@@ -448,33 +453,53 @@ def train_per_game(game_datasets, args, device):
                     batch_correct = (logits.argmax(dim=1) == batch_actions.long().view(-1)).float()
                 else:
                     preds = (torch.sigmoid(logits) >= 0.5).to(batch_actions.dtype)
-                    batch_correct = (preds == batch_actions).view(batch_actions.size(0), -1).float().mean(dim=1)
-                    # Per-key accuracy
-                    key_correct = (preds == batch_actions).float().cpu()
-                    if per_key_correct is None:
-                        per_key_correct = key_correct.sum(dim=0)
-                    else:
-                        per_key_correct += key_correct.sum(dim=0)
-                    per_key_total += batch_actions.size(0)
-                    # Baseline: always predict 0 (not pressed)
+                    match = (preds == batch_actions)
+                    batch_correct = match.view(batch_actions.size(0), -1).float().mean(dim=1)
+                    # Exact match
+                    exact_match_correct += match.all(dim=1).float().sum().item()
+                    # Hamming
+                    hamming_wrong += (~match).float().sum().item()
+                    hamming_total += batch_actions.numel()
+                    # Per-key F1
+                    preds_cpu = preds.cpu()
+                    targets_cpu = batch_actions.cpu()
+                    per_key_tp += ((preds_cpu == 1) & (targets_cpu == 1)).float().sum(dim=0)
+                    per_key_fp += ((preds_cpu == 1) & (targets_cpu == 0)).float().sum(dim=0)
+                    per_key_fn += ((preds_cpu == 0) & (targets_cpu == 1)).float().sum(dim=0)
+                    # Baseline: always predict 0
                     baseline_correct += (batch_actions == 0).float().sum().item()
                 total_correct += batch_correct.sum().item()
                 total_count += batch_correct.numel()
 
         accuracy = total_correct / total_count if total_count else 0.0
-        results[game_name] = {
+        result = {
             'accuracy': accuracy,
             'n_train': len(train_dataset),
             'n_test': len(test_dataset),
             'n_actions': num_actions,
             'action_mode': action_mode,
         }
-        print(f"  Test accuracy (element-wise): {accuracy:.4f}")
-        if per_key_correct is not None and per_key_total > 0:
-            baseline = baseline_correct / (per_key_total * num_actions)
+
+        if action_mode == 'multilabel':
+            exact_match_acc = exact_match_correct / total_count if total_count else 0.0
+            hamming_loss = hamming_wrong / hamming_total if hamming_total else 0.0
+            f1_scores = []
+            for k in range(num_actions):
+                denom = 2 * per_key_tp[k] + per_key_fp[k] + per_key_fn[k]
+                f1_scores.append((2 * per_key_tp[k] / denom).item() if denom > 0 else 0.0)
+            result['exact_match_acc'] = exact_match_acc
+            result['hamming_loss'] = hamming_loss
+            result['per_key_f1'] = f1_scores
+            baseline = baseline_correct / hamming_total if hamming_total else 0.0
+            print(f"  Test accuracy (element-wise): {accuracy:.4f}")
+            print(f"  Exact match accuracy:         {exact_match_acc:.4f}")
+            print(f"  Hamming loss:                 {hamming_loss:.4f}")
             print(f"  Baseline (always predict 0):  {baseline:.4f}")
-            key_accs = (per_key_correct / per_key_total).tolist()
-            print(f"  Per-key accuracy: {[f'{v:.3f}' for v in key_accs]}")
+            print(f"  Per-key F1: {[f'{v:.3f}' for v in f1_scores]}")
+        else:
+            print(f"  Test accuracy: {accuracy:.4f}")
+
+        results[game_name] = result
 
     return results
 
@@ -518,11 +543,16 @@ def main():
 
         if args.out_csv:
             os.makedirs(os.path.dirname(os.path.abspath(args.out_csv)), exist_ok=True)
+            fieldnames = ['game', 'accuracy', 'exact_match_acc', 'hamming_loss', 'per_key_f1',
+                          'n_train', 'n_test', 'n_actions', 'action_mode']
             with open(args.out_csv, 'w', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=['game', 'accuracy', 'n_train', 'n_test', 'n_actions', 'action_mode'])
+                writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
                 writer.writeheader()
                 for game_name, info in sorted_results:
-                    writer.writerow({'game': game_name, **info})
+                    row = {'game': game_name, **info}
+                    if 'per_key_f1' in row:
+                        row['per_key_f1'] = str([round(v, 4) for v in row['per_key_f1']])
+                    writer.writerow(row)
             print(f"\nResults saved to {args.out_csv}")
         return
 
