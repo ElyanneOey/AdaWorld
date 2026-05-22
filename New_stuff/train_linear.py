@@ -30,7 +30,7 @@ def _get_game_name(path, dump_dir, data=None, no_source=False):
     return parts[0] if no_source else parts[1]
 
 
-def _extract_actions(data, file_path=''):
+def _extract_actions(data, file_path='', filter_actions=None):
     """Return (actions_tensor, action_names_or_None) from a loaded .pt dict.
 
     Handles three cases:
@@ -82,9 +82,12 @@ def _extract_actions(data, file_path=''):
                 return None, None
         # skipped dataset: dicts with 'desc'/'description' key
         labels = [a.get('desc', a.get('description', str(sorted(a.items())))) for a in raw]
-        unique_labels = sorted(l for l in set(labels) if l != 'none')
+        unique_labels = sorted(
+            l for l in set(labels)
+            if l != 'none' and (filter_actions is None or l in filter_actions)
+        )
         label_to_idx = {l: i for i, l in enumerate(unique_labels)}
-        # 'none' actions get -1 and are filtered out by the caller
+        # 'none' actions and filtered-out actions get -1 and are skipped by the caller
         return torch.tensor([label_to_idx.get(l, -1) for l in labels], dtype=torch.long), unique_labels
 
     # Standard numeric actions
@@ -102,7 +105,7 @@ def _build_dataset(samples):
     return z, actions, games
 
 
-def load_data(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent_actions_dump', no_source=False):
+def load_data(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent_actions_dump', no_source=False, filter_actions=None):
     import os as _os
     if no_source:
         files = sorted(glob.glob(_os.path.join(dump_dir, '**', 'latent_actions.pt'), recursive=True))
@@ -125,7 +128,7 @@ def load_data(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent_actions_
 
         game_name = _get_game_name(f, dump_dir, data, no_source=no_source)
 
-        actions, _ = _extract_actions(data, file_path=f)
+        actions, _ = _extract_actions(data, file_path=f, filter_actions=filter_actions)
         if actions is None or len(actions) == 0:
             print(f"Skipping {f}: no actions found.")
             continue
@@ -311,7 +314,7 @@ def evaluate_multiclass_model(model, loader, unique_games, device, target_index=
     }
     return total_accuracy, per_game_accuracy
 
-def load_data_per_game(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent_actions_dump', no_source=False):
+def load_data_per_game(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent_actions_dump', no_source=False, filter_actions=None):
     """Load data grouped by game. Returns dict: game_name -> (train_dataset, test_dataset, num_actions, action_mode)."""
     import os as _os
     if no_source:
@@ -335,7 +338,7 @@ def load_data_per_game(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent
 
         game_name = _get_game_name(f, dump_dir, data, no_source=no_source)
 
-        actions, action_labels = _extract_actions(data, file_path=f)
+        actions, action_labels = _extract_actions(data, file_path=f, filter_actions=filter_actions)
         if actions is None or len(actions) == 0:
             print(f"Skipping {f}: no actions found.")
             continue
@@ -538,15 +541,19 @@ def main():
                         help='Train a separate model for each game instead of a single shared model')
     parser.add_argument('--no-source', action='store_true',
                         help='Data has no source subfolder: dump-dir/<game>/... instead of dump-dir/<source>/<game>/...')
+    parser.add_argument('--filter-actions', type=str, default=None,
+                        help='Comma-separated list of action labels to keep (skipped dataset only), e.g. right,left,crouch,jump')
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
 
+    filter_actions = set(args.filter_actions.split(',')) if args.filter_actions else None
+
     if args.per_game:
         print("Loading per-game data...")
         game_datasets = load_data_per_game(dataset=args.dataset, dump_dir=args.dump_dir,
-                                           no_source=args.no_source)
+                                           no_source=args.no_source, filter_actions=filter_actions)
         print(f"Games: {list(game_datasets.keys())}")
         per_game_results = train_per_game(game_datasets, args, device)
         print(f"\n{'='*60}")
@@ -573,7 +580,7 @@ def main():
         return
 
     print("Loading data...")
-    train_dataset, test_dataset, num_actions, unique_games, action_mode = load_data(dataset=args.dataset, dump_dir=args.dump_dir, no_source=args.no_source)
+    train_dataset, test_dataset, num_actions, unique_games, action_mode = load_data(dataset=args.dataset, dump_dir=args.dump_dir, no_source=args.no_source, filter_actions=filter_actions)
     print(f"Train samples: {len(train_dataset)}, Test samples: {len(test_dataset)}")
     print(f"Games: {unique_games}")
 

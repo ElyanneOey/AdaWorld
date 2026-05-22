@@ -23,4 +23,5 @@ python New_stuff/train_linear.py \
     --dataset olafworld \
     --dump-dir /gpfs/home3/scur0531/AdaWorld/latent_actions_skipped \
     --per_game \
-    --out-csv ./results/skipped/olafworld_per_game_action_accuracy_h3.csv
+    --out-csv ./results/skipped/olafworld_per_game_action_accuracy_h3.csv \
+    --filter-actions "right,left,crouch,jump"
