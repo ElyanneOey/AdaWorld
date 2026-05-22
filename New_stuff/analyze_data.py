@@ -30,11 +30,16 @@ import torch
 
 # ========================== Helpers =========================================
 
-def _to_action_key(action):
+def _to_action_key(action, is_dump2=False):
     """Convert any action format to a human-readable string key."""
     if action is None:
         return None
     if isinstance(action, dict):
+        # latent_actions_dump_2 (p2p): dicts with 'action' key
+        if is_dump2 and 'action' in action:
+            val = action['action']
+            return val if isinstance(val, str) else str(val)
+        # skipped dataset: dicts with 'desc'/'description' key
         return action.get('desc', action.get('description', str(sorted(action.items()))))
     try:
         return str(tuple(int(x) for x in action))
@@ -42,49 +47,61 @@ def _to_action_key(action):
         return str(action)
 
 
-def _decode_keyboard(keyboard_labels, keyboard_keys=None):
-    """Decode p2p multi-hot keyboard_labels into action strings like 'w+space'."""
-    if isinstance(keyboard_labels, torch.Tensor):
-        kl = keyboard_labels.tolist()
-    else:
-        kl = list(keyboard_labels)
-    if not kl:
-        return []
-    if isinstance(kl[0], str):
-        return kl
+def _decode_keyboard(keyboard_labels, keyboard_keys=None, mouse_buttons=None):
+    """Decode p2p multi-hot keyboard_labels (+ mouse_buttons) into action strings like 'w+space+left_click'."""
+    kl = keyboard_labels if isinstance(keyboard_labels, torch.Tensor) else torch.as_tensor(keyboard_labels)
+    if kl.ndim == 1:
+        kl = kl.unsqueeze(0)
+    kl = (kl > 0)
+
     if keyboard_keys is not None:
         kk = keyboard_keys.tolist() if isinstance(keyboard_keys, torch.Tensor) else list(keyboard_keys)
         key_names = [str(k) for k in kk]
     else:
         key_names = None
+
+    mb = None
+    if mouse_buttons is not None:
+        mb = mouse_buttons if isinstance(mouse_buttons, torch.Tensor) else torch.as_tensor(mouse_buttons)
+
     result = []
-    for label in kl:
-        if isinstance(label, (list, tuple)) and key_names and len(label) == len(key_names):
-            pressed = [key_names[i] for i, v in enumerate(label) if v]
-            result.append('+'.join(sorted(pressed)) if pressed else 'none')
-        else:
-            result.append(str(label))
+    for i in range(kl.shape[0]):
+        row = kl[i].tolist()
+        pressed = [key_names[j] if key_names else str(j) for j, v in enumerate(row) if v]
+        if mb is not None and i < len(mb):
+            mb_val = mb[i].item()
+            if mb_val == 0:
+                pressed.append('left_click')
+            elif mb_val == 1:
+                pressed.append('right_click')
+        result.append('+'.join(sorted(pressed)) if pressed else 'none')
     return result
 
 
-def _get_game_name(path, dump_dir, data):
-    """Return game name: from .pt dict if available (p2p), else from path."""
-    if 'game_name' in data:
+def _get_game_name(path, dump_dir, data, no_source=False):
+    """Return game name: from .pt dict if available, else from path layout."""
+    if data.get('game_name'):
         return str(data['game_name'])
-    return Path(path).relative_to(dump_dir).parts[1]
+    if 'latent_actions_dump_2' in dump_dir:
+        # layout: <dump>/<game>/<session>/latent_actions.pt → parts[-3] is game
+        abs_parts = Path(path).parts
+        return abs_parts[-3] if len(abs_parts) >= 3 else 'unknown'
+    rel_parts = Path(path).relative_to(dump_dir).parts
+    return rel_parts[0] if no_source else rel_parts[1]
 
 
 # ========================== Data loading ====================================
 
-def load_action_stats(dump_dir: str, source: str | None = None):
+def load_action_stats(dump_dir: str, source: str | None = None, no_source: bool = False):
     """Return per-game action counts and total latent counts from .pt files."""
     files = sorted(glob.glob(os.path.join(dump_dir, '**', 'latent_actions.pt'), recursive=True))
-    if source:
+    if source and not no_source:
         files = [f for f in files if Path(f).relative_to(dump_dir).parts[0] == source]
     if not files:
         raise RuntimeError(f"No latent_actions.pt files found under {dump_dir}")
     print(f"Found {len(files)} files")
 
+    is_dump2 = 'latent_actions_dump_2' in dump_dir
     game_action_counts = defaultdict(lambda: defaultdict(int))
     game_total_counts  = defaultdict(int)
 
@@ -95,7 +112,7 @@ def load_action_stats(dump_dir: str, source: str | None = None):
             print(f"  Skipping {f}: {e}")
             continue
 
-        game = _get_game_name(f, dump_dir, data)
+        game = _get_game_name(f, dump_dir, data, no_source=no_source)
 
         z_mu = data.get('z_mu')
         if z_mu is None:
@@ -104,8 +121,9 @@ def load_action_stats(dump_dir: str, source: str | None = None):
         game_total_counts[game] += n
 
         # p2p: keyboard_labels instead of actions
-        if 'keyboard_labels' in data and data.get('actions') is None:
-            action_keys = _decode_keyboard(data['keyboard_labels'], data.get('keyboard_keys'))
+        if 'keyboard_labels' in data and not data.get('actions'):
+            action_keys = _decode_keyboard(
+                data['keyboard_labels'], data.get('keyboard_keys'), data.get('mouse_buttons'))
             for key in action_keys:
                 if key is not None:
                     game_action_counts[game][key] += 1
@@ -115,7 +133,7 @@ def load_action_stats(dump_dir: str, source: str | None = None):
         if actions_raw is None:
             continue
         for action in actions_raw:
-            key = _to_action_key(action)
+            key = _to_action_key(action, is_dump2=is_dump2)
             if key is not None:
                 game_action_counts[game][key] += 1
 
@@ -429,7 +447,9 @@ def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument('--dump-dir', type=str, default='./latent_actions_dump')
     p.add_argument('--source', type=str, default=None,
-                   help='Source subfolder, e.g. "adaworld"')
+                   help='Source subfolder, e.g. "adaworld". Ignored when --no-source is set.')
+    p.add_argument('--no-source', action='store_true',
+                   help='Data has no source subfolder: dump-dir/<game>/... instead of dump-dir/<source>/<game>/...')
     p.add_argument('--video-dir', type=str, default=None,
                    help='Root of original video data for frame delta computation')
     p.add_argument('--out-dir', type=str, default='./plots/analysis')
@@ -443,7 +463,7 @@ def main():
     os.makedirs(args.results_dir, exist_ok=True)
 
     print("Loading action statistics...")
-    game_action_counts, game_total_counts = load_action_stats(args.dump_dir, args.source)
+    game_action_counts, game_total_counts = load_action_stats(args.dump_dir, args.source, args.no_source)
 
     print("\nPlotting action distribution heatmap...")
     plot_action_heatmap(game_action_counts,
