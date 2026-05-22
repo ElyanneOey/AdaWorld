@@ -82,9 +82,10 @@ def _extract_actions(data, file_path=''):
                 return None, None
         # skipped dataset: dicts with 'desc'/'description' key
         labels = [a.get('desc', a.get('description', str(sorted(a.items())))) for a in raw]
-        unique_labels = sorted(set(labels))
+        unique_labels = sorted(l for l in set(labels) if l != 'none')
         label_to_idx = {l: i for i, l in enumerate(unique_labels)}
-        return torch.tensor([label_to_idx[l] for l in labels], dtype=torch.long), unique_labels
+        # 'none' actions get -1 and are filtered out by the caller
+        return torch.tensor([label_to_idx.get(l, -1) for l in labels], dtype=torch.long), unique_labels
 
     # Standard numeric actions
     try:
@@ -143,6 +144,8 @@ def load_data(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent_actions_
         if game_name not in samples_by_game:
             unique_games.append(game_name)
         for sample_z, sample_action in zip(z, actions):
+            if sample_action.ndim == 0 and sample_action.item() == -1:
+                continue
             samples_by_game[game_name].append((sample_z, sample_action, game_name))
 
     min_count = min(len(samples) for samples in samples_by_game.values())
@@ -348,6 +351,8 @@ def load_data_per_game(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent
             actions = actions.squeeze(1)
 
         for sample_z, sample_action in zip(z, actions):
+            if sample_action.ndim == 0 and sample_action.item() == -1:
+                continue
             samples_by_game[game_name].append((sample_z, sample_action))
 
     rng = random.Random(seed)
