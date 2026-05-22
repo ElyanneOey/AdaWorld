@@ -324,6 +324,7 @@ def load_data_per_game(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent
         raise RuntimeError(f'No latent_actions.pt files found under {dump_dir}.')
 
     samples_by_game = defaultdict(list)
+    game_action_labels = defaultdict(set)
 
     for f in files:
         try:
@@ -334,10 +335,13 @@ def load_data_per_game(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent
 
         game_name = _get_game_name(f, dump_dir, data, no_source=no_source)
 
-        actions, _ = _extract_actions(data, file_path=f)
+        actions, action_labels = _extract_actions(data, file_path=f)
         if actions is None or len(actions) == 0:
             print(f"Skipping {f}: no actions found.")
             continue
+
+        if action_labels is not None:
+            game_action_labels[game_name].update(action_labels)
 
         z = torch.as_tensor(data['z_mu'], dtype=torch.float32)
         if z.ndim == 1:
@@ -358,6 +362,9 @@ def load_data_per_game(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent
             samples_by_game[game_name].append((sample_z, sample_action))
         if none_count:
             print(f"  [{game_name}] filtered {none_count} 'none' action samples")
+
+    for game_name, labels in sorted(game_action_labels.items()):
+        print(f"  [{game_name}] action labels: {sorted(labels)}")
 
     rng = random.Random(seed)
     game_datasets = {}
