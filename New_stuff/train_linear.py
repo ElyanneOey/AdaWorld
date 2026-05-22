@@ -350,10 +350,14 @@ def load_data_per_game(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent
         if actions.ndim == 2 and actions.shape[1] == 1 and torch.all(actions == actions.long().to(actions.dtype)):
             actions = actions.squeeze(1)
 
+        none_count = 0
         for sample_z, sample_action in zip(z, actions):
             if sample_action.ndim == 0 and sample_action.item() == -1:
+                none_count += 1
                 continue
             samples_by_game[game_name].append((sample_z, sample_action))
+        if none_count:
+            print(f"  [{game_name}] filtered {none_count} 'none' action samples")
 
     rng = random.Random(seed)
     game_datasets = {}
