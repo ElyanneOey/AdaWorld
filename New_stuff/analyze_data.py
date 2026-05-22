@@ -326,10 +326,24 @@ def _load_frames_from_dir(frames_dir: str) -> list[np.ndarray]:
     return frames
 
 
-def compute_frame_deltas(dump_dir: str, video_dir: str, source: str | None = None):
-    """Compute frame delta statistics from original frames/ directories.
+def _load_frames_from_video(video_path: str) -> list[np.ndarray]:
+    """Extract all frames from a video file using OpenCV."""
+    import cv2
+    cap = cv2.VideoCapture(video_path)
+    frames = []
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB).astype(np.float32))
+    cap.release()
+    return frames
 
-    Returns seven dicts:
+
+def compute_frame_deltas(dump_dir: str, video_dir: str, source: str | None = None, no_source: bool = False):
+    """Compute frame delta statistics from video files or frames/ directories.
+
+    Returns six dicts:
         game_action_mean_delta : {game: {action: mean_delta}}
         game_video_deltas      : {game: [mean_delta_per_video, ...]}
         game_overall_delta     : {game: overall_mean_delta}
@@ -338,9 +352,10 @@ def compute_frame_deltas(dump_dir: str, video_dir: str, source: str | None = Non
         game_late_delta        : {game: mean_delta over last third of frames}
     """
     files = sorted(glob.glob(os.path.join(dump_dir, '**', 'latent_actions.pt'), recursive=True))
-    if source:
+    if source and not no_source:
         files = [f for f in files if Path(f).relative_to(dump_dir).parts[0] == source]
 
+    is_dump2 = 'latent_actions_dump_2' in dump_dir
     game_action_deltas = defaultdict(lambda: defaultdict(list))
     game_video_deltas  = defaultdict(list)
     game_early_deltas  = defaultdict(list)
@@ -348,36 +363,53 @@ def compute_frame_deltas(dump_dir: str, video_dir: str, source: str | None = Non
     game_late_deltas   = defaultdict(list)
 
     for f in files:
-        parts = Path(f).relative_to(dump_dir).parts
-        # Retro data: source/game/seed/episode/latent_actions.pt
-        if len(parts) < 4:
-            continue
-        game, seed, episode = parts[1], parts[2], parts[3]
-
-        frames_dir = os.path.join(video_dir, game, seed, episode, 'frames')
-        if not os.path.isdir(frames_dir):
-            continue
-
         try:
             data = torch.load(f, map_location='cpu')
         except Exception:
             continue
-        actions_raw = data.get('actions')
-        if actions_raw is None:
-            continue
 
-        frames = _load_frames_from_dir(frames_dir)
-        if len(frames) < 2:
-            continue
+        if is_dump2:
+            game = _get_game_name(f, dump_dir, data, no_source=no_source)
+            session_uuid = Path(f).parent.name
+            video_path = None
+            for fname in ('192x192.mp4', 'video.mp4'):
+                candidate = os.path.join(video_dir, session_uuid, fname)
+                if os.path.isfile(candidate):
+                    video_path = candidate
+                    break
+            if video_path is None:
+                continue
+            frames = _load_frames_from_video(video_path)
+            if len(frames) < 2:
+                continue
+            if 'keyboard_labels' in data:
+                actions_list = _decode_keyboard(
+                    data['keyboard_labels'], data.get('keyboard_keys'), data.get('mouse_buttons'))
+            else:
+                actions_list = [None] * (len(frames) - 1)
+        else:
+            parts = Path(f).relative_to(dump_dir).parts
+            # Retro data: source/game/seed/episode/latent_actions.pt
+            if len(parts) < 4:
+                continue
+            game, seed, episode = parts[1], parts[2], parts[3]
+            frames_dir = os.path.join(video_dir, game, seed, episode, 'frames')
+            if not os.path.isdir(frames_dir):
+                continue
+            frames = _load_frames_from_dir(frames_dir)
+            if len(frames) < 2:
+                continue
+            actions_raw = data.get('actions')
+            if actions_raw is None:
+                continue
+            actions_list = [_to_action_key(a) for a in actions_raw]
 
         video_deltas = []
-        n_pairs = min(len(frames) - 1, len(actions_raw))
+        n_pairs = min(len(frames) - 1, len(actions_list))
         for i in range(n_pairs):
             delta = float(np.mean(np.abs(frames[i + 1] - frames[i])))
             video_deltas.append(delta)
-
-            action = actions_raw[i]
-            key = _to_action_key(action)
+            key = actions_list[i]
             if key is not None:
                 game_action_deltas[game][key].append(delta)
 
@@ -480,7 +512,7 @@ def main():
     if args.video_dir:
         print("\nComputing frame deltas (this may take a while)...")
         delta_stats, game_video_deltas, game_overall_delta, game_early_delta, game_mid_delta, game_late_delta = \
-            compute_frame_deltas(args.dump_dir, args.video_dir, args.source)
+            compute_frame_deltas(args.dump_dir, args.video_dir, args.source, args.no_source)
         if not delta_stats:
             print("  No frame delta results (video layout may not match this dataset — skipping frame delta plots)")
         else:
@@ -492,8 +524,8 @@ def main():
                                           os.path.join(args.out_dir, 'frame_delta_distribution.png'))
             plot_frame_delta_early_mid_late(game_early_delta, game_mid_delta, game_late_delta,
                                             os.path.join(args.out_dir, 'frame_delta_early_mid_late.png'))
-        save_frame_delta_csv(delta_stats, game_overall_delta,
-                             os.path.join(args.results_dir, 'frame_delta.csv'))
+            save_frame_delta_csv(delta_stats, game_overall_delta,
+                                 os.path.join(args.results_dir, 'frame_delta.csv'))
     else:
         print("\nSkipping frame delta (no --video-dir provided)")
 

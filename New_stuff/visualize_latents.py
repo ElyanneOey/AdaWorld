@@ -96,43 +96,8 @@ def load_all_latents(dump_dir: str, max_samples: int | None = None,
         n = z.shape[0]
 
         # Actions
-        actions_raw = data.get('actions', None)
-        has_dense = actions_raw is not None
-        try:
-            has_dense = has_dense and len(actions_raw) > 0
-        except TypeError:
-            pass
-
-        if has_dense:
-            if isinstance(actions_raw, torch.Tensor):
-                actions_raw = actions_raw.tolist()
-            elif not isinstance(actions_raw, list):
-                try:
-                    actions_raw = list(actions_raw)
-                except Exception:
-                    actions_raw = [None] * n
-
-            def _to_label(a):
-                if a is None:
-                    return None
-                if isinstance(a, dict):
-                    # latent_actions_dump_2 (p2p): dicts with 'action' key
-                    if is_dump2 and 'action' in a:
-                        val = a['action']
-                        return val if isinstance(val, str) else str(val)
-                    # skipped dataset: dicts with 'desc'/'description' key
-                    return a.get('desc', a.get('description', str(sorted(a.items()))))
-                if isinstance(a, (list, np.ndarray, torch.Tensor)):
-                    try:
-                        return str(tuple(int(x) for x in a))
-                    except Exception:
-                        return str(a)
-                return a if isinstance(a, str) else str(a)
-
-            actions = [_to_label(a) for a in actions_raw]
-
-        elif 'keyboard_labels' in data:
-            # p2p keyboard + mouse fallback (matching train_linear_2.py)
+        if is_dump2 and 'keyboard_labels' in data:
+            # p2p (latent_actions_dump_2): always use keyboard_labels + mouse_buttons
             kl = data['keyboard_labels']
             kl = kl if isinstance(kl, torch.Tensor) else torch.as_tensor(kl)
             if kl.ndim == 1:
@@ -159,8 +124,40 @@ def load_all_latents(dump_dir: str, max_samples: int | None = None,
                     elif mb_val == 1:
                         pressed.append('right_click')
                 actions.append('+'.join(sorted(pressed)) if pressed else 'none')
+
         else:
-            actions = [None] * n
+            actions_raw = data.get('actions', None)
+            has_dense = actions_raw is not None
+            try:
+                has_dense = has_dense and len(actions_raw) > 0
+            except TypeError:
+                pass
+
+            if has_dense:
+                if isinstance(actions_raw, torch.Tensor):
+                    actions_raw = actions_raw.tolist()
+                elif not isinstance(actions_raw, list):
+                    try:
+                        actions_raw = list(actions_raw)
+                    except Exception:
+                        actions_raw = [None] * n
+
+                def _to_label(a):
+                    if a is None:
+                        return None
+                    if isinstance(a, dict):
+                        # skipped dataset: dicts with 'desc'/'description' key
+                        return a.get('desc', a.get('description', str(sorted(a.items()))))
+                    if isinstance(a, (list, np.ndarray, torch.Tensor)):
+                        try:
+                            return str(tuple(int(x) for x in a))
+                        except Exception:
+                            return str(a)
+                    return a if isinstance(a, str) else str(a)
+
+                actions = [_to_label(a) for a in actions_raw]
+            else:
+                actions = [None] * n
 
         all_z.append(z)
         all_actions.extend(actions)
