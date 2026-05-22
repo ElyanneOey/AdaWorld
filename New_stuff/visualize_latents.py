@@ -368,16 +368,10 @@ def run_sweep(
     umap_min_dist: list = None,
     tsne_perplexity: list = None,
     pca_pairs: list = None,
-    z_action: np.ndarray = None,
-    actions_action: list = None,
 ) -> None:
     """Run one method across a grid of hyperparameter values and save one plot per setting."""
-    if color_by == 'action' and z_action is not None:
-        z_use = z_action
-        labels = actions_action
-    else:
-        z_use = z
-        labels = actions if color_by == 'action' else games
+    z_use = z
+    labels = actions if color_by == 'action' else games
     sweep_dir = os.path.join(out_dir, 'sweep', method)
     os.makedirs(sweep_dir, exist_ok=True)
 
@@ -540,55 +534,41 @@ def main():
         sources = [s for s, m in zip(sources,  mask) if m]
         print(f"After filtering to {keep}: {len(z)} samples remaining")
 
-    # For action-colored plots: keep only single-action samples (p2p has '+'-joined combos)
-    is_single = np.array([a is not None and a != 'none' and '+' not in str(a) for a in actions])
-    if is_single.any() and not is_single.all():
-        z_sa = z[is_single]
-        actions_sa = [a for a, s in zip(actions, is_single) if s]
-        games_sa   = [g for g, s in zip(games,   is_single) if s]
-        print(f"Single-action filter: {is_single.sum()}/{len(actions)} samples kept for action-colored plots")
-    else:
-        z_sa, actions_sa, games_sa = z, actions, games
-
     # --- PCA ---
     if args.method in ('pca', 'all'):
         print("\nRunning PCA...")
         _, pca_full = run_pca(z, n_components=min(z.shape[1], z.shape[0]))
         pca_variance_plot(pca_full, os.path.join(args.out_dir, 'pca_variance.png'))
 
-        pca_sa, _ = run_pca(z_sa, n_components=2)
-        scatter_plot(pca_sa, actions_sa, 'PCA — colored by action',
-                     os.path.join(args.out_dir, 'pca_actions.png'))
         pca_2d, _ = run_pca(z, n_components=2)
+        scatter_plot(pca_2d, actions, 'PCA — colored by action',
+                     os.path.join(args.out_dir, 'pca_actions.png'))
         scatter_plot(pca_2d, games, 'PCA — colored by game',
                      os.path.join(args.out_dir, 'pca_games.png'))
 
     # --- t-SNE ---
     if args.method in ('tsne', 'all'):
         print("\nRunning t-SNE (this may take a few minutes)...")
-        tsne_sa = run_tsne(z_sa)
-        scatter_plot(tsne_sa, actions_sa, 't-SNE — colored by action',
-                     os.path.join(args.out_dir, 'tsne_actions.png'))
         tsne_2d = run_tsne(z)
+        scatter_plot(tsne_2d, actions, 't-SNE — colored by action',
+                     os.path.join(args.out_dir, 'tsne_actions.png'))
         scatter_plot(tsne_2d, games, 't-SNE — colored by game',
                      os.path.join(args.out_dir, 'tsne_games.png'))
 
     # --- UMAP ---
     if args.method in ('umap', 'all'):
         print("\nRunning UMAP (2D)...")
-        umap_sa = run_umap(z_sa, n_components=2)
-        scatter_plot(umap_sa, actions_sa, 'UMAP — colored by action',
-                     os.path.join(args.out_dir, 'umap_actions.png'))
         umap_2d = run_umap(z, n_components=2)
+        scatter_plot(umap_2d, actions, 'UMAP — colored by action',
+                     os.path.join(args.out_dir, 'umap_actions.png'))
         scatter_plot(umap_2d, games, 'UMAP — colored by game',
                      os.path.join(args.out_dir, 'umap_games.png'))
 
         if args.umap_3d:
             print("\nRunning UMAP (3D)...")
-            umap_3d_sa = run_umap(z_sa, n_components=3)
-            scatter_plot_3d(umap_3d_sa, actions_sa, 'UMAP 3D — colored by action',
-                            os.path.join(args.out_dir, 'umap_3d_actions.png'))
             umap_3d = run_umap(z, n_components=3)
+            scatter_plot_3d(umap_3d, actions, 'UMAP 3D — colored by action',
+                            os.path.join(args.out_dir, 'umap_3d_actions.png'))
             scatter_plot_3d(umap_3d, games, 'UMAP 3D — colored by game',
                             os.path.join(args.out_dir, 'umap_3d_games.png'))
 
@@ -605,12 +585,11 @@ def main():
                 run_sweep(z, actions, games, args.out_dir, method=m,
                           color_by=color_by,
                           umap_n_neighbors=nn_list, umap_min_dist=md_list,
-                          tsne_perplexity=perp_list,
-                          z_action=z_sa, actions_action=actions_sa)
+                          tsne_perplexity=perp_list)
 
     # --- Per-game ---
     if args.per_game:
-        run_per_game(z_sa, actions_sa, games_sa, args.out_dir,
+        run_per_game(z, actions, games, args.out_dir,
                      method=args.per_game_method,
                      min_samples=args.min_samples)
 
