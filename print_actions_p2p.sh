@@ -15,11 +15,11 @@ source activate adaworld_elyanne
 cd ${SLURM_SUBMIT_DIR}
 
 echo "=== adaworld ==="
-python new_stuff/print_actions.py \
+python New_stuff/print_actions.py \
     --dump-dir /gpfs/home3/scur0531/AdaWorld/latent_actions_dump_2 \
     --source adaworld
 
 echo "=== olafworld ==="
-python new_stuff/print_actions.py \
+python New_stuff/print_actions.py \
     --dump-dir /gpfs/home3/scur0531/AdaWorld/latent_actions_dump_2 \
     --source olafworld
