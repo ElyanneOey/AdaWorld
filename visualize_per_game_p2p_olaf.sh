@@ -25,6 +25,7 @@ BASE_ARGS="--dump-dir /gpfs/home3/scur0531/AdaWorld/latent_actions_dump_2 \
     --source olafworld \
     --out-dir ./plots/p2p/olafworld \
     --max-samples 999999 \
+    --single-action \
     --per-game \
     --min-samples 20"
 

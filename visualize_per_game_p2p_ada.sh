@@ -25,6 +25,7 @@ BASE_ARGS="--dump-dir /gpfs/home3/scur0531/AdaWorld/latent_actions_dump_2 \
     --source adaworld \
     --out-dir ./plots/p2p/adaworld \
     --max-samples 999999 \
+    --single-action \
     --per-game \
     --min-samples 20"
 

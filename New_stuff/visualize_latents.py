@@ -510,6 +510,8 @@ def parse_args():
                    help='Comma-separated list of action descriptions to keep, e.g. "right,left,crouch,jump"')
     p.add_argument('--no-source', action='store_true',
                    help='Data has no source subfolder: dump-dir/<game>/... instead of dump-dir/<source>/<game>/...')
+    p.add_argument('--single-action', action='store_true',
+                   help='Keep only samples where a single action is pressed (no + combinations)')
     return p.parse_args()
 
 
@@ -539,6 +541,14 @@ def main():
         games   = [g for g, m in zip(games,   mask) if m]
         sources = [s for s, m in zip(sources,  mask) if m]
         print(f"After filtering to {keep}: {len(z)} samples remaining")
+
+    if args.single_action:
+        mask = np.array([a is not None and '+' not in str(a) for a in actions])
+        z       = z[mask]
+        actions = [a for a, m in zip(actions, mask) if m]
+        games   = [g for g, m in zip(games,   mask) if m]
+        sources = [s for s, m in zip(sources,  mask) if m]
+        print(f"Single-action filter: {mask.sum()}/{len(mask)} samples remaining")
 
     # --- PCA ---
     if args.method in ('pca', 'all'):

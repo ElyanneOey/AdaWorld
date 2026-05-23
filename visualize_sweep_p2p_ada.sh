@@ -25,6 +25,7 @@ python New_stuff/visualize_latents.py \
     --source adaworld \
     --out-dir ./plots/p2p/adaworld \
     --max-samples 10000 \
+    --single-action \
     --method all \
     --sweep \
     --sweep-color both \

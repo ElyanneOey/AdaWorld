@@ -25,6 +25,7 @@ python New_stuff/visualize_latents.py \
     --source olafworld \
     --out-dir ./plots/p2p/olafworld \
     --max-samples 10000 \
+    --single-action \
     --method all \
     --sweep \
     --sweep-color both \
