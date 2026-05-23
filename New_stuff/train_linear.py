@@ -56,7 +56,10 @@ def _extract_actions(data, file_path='', filter_actions=None):
             mouse_cols = torch.zeros((kl.shape[0], 2), dtype=torch.float32)
             mouse_cols[:, 0] = (mb == 0).float()
             mouse_cols[:, 1] = (mb == 1).float()
-            kl = torch.cat([kl, mouse_cols], dim=1)
+            if mouse_cols.any():
+                kl = torch.cat([kl, mouse_cols], dim=1)
+                if key_names is not None:
+                    key_names = key_names + ['left_click', 'right_click']
         return kl, key_names
 
     if raw is None:
@@ -314,7 +317,7 @@ def evaluate_multiclass_model(model, loader, unique_games, device, target_index=
     }
     return total_accuracy, per_game_accuracy
 
-def load_data_per_game(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent_actions_dump', no_source=False, filter_actions=None):
+def load_data_per_game(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent_actions_dump', no_source=False, filter_actions=None, game_filter=None):
     """Load data grouped by game. Returns dict: game_name -> (train_dataset, test_dataset, num_actions, action_mode)."""
     import os as _os
     if no_source:
@@ -328,6 +331,7 @@ def load_data_per_game(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent
 
     samples_by_game = defaultdict(list)
     game_action_labels = defaultdict(set)
+    game_key_names = {}  # game_name -> ordered list of key names
 
     for f in files:
         try:
@@ -345,6 +349,8 @@ def load_data_per_game(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent
 
         if action_labels is not None:
             game_action_labels[game_name].update(action_labels)
+            if game_name not in game_key_names:
+                game_key_names[game_name] = action_labels
 
         z = torch.as_tensor(data['z_mu'], dtype=torch.float32)
         if z.ndim == 1:
@@ -365,6 +371,14 @@ def load_data_per_game(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent
             samples_by_game[game_name].append((sample_z, sample_action))
         if none_count:
             print(f"  [{game_name}] filtered {none_count} 'none' action samples")
+
+    if game_filter:
+        missing = [g for g in game_filter if g not in samples_by_game]
+        if missing:
+            print(f"Warning: game(s) not found in data: {missing}")
+            print(f"Available games: {sorted(samples_by_game.keys())}")
+        samples_by_game = {g: v for g, v in samples_by_game.items() if g in game_filter}
+        game_action_labels = {g: v for g, v in game_action_labels.items() if g in game_filter}
 
     for game_name, labels in sorted(game_action_labels.items()):
         print(f"  [{game_name}] action labels: {sorted(labels)}")
@@ -408,6 +422,7 @@ def load_data_per_game(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent
             TensorDataset(test_z, test_actions),
             num_actions,
             action_mode,
+            game_key_names.get(game_name),
         )
 
     return game_datasets
@@ -417,7 +432,7 @@ def train_per_game(game_datasets, args, device):
     """Train and evaluate a separate model for each game. Returns dict: game_name -> test_accuracy."""
     results = {}
 
-    for game_name, (train_dataset, test_dataset, num_actions, action_mode) in game_datasets.items():
+    for game_name, (train_dataset, test_dataset, num_actions, action_mode, key_names) in game_datasets.items():
         print(f"\n{'='*60}")
         print(f"Game: {game_name}  |  train={len(train_dataset)}  test={len(test_dataset)}  actions={num_actions}  mode={action_mode}")
 
@@ -514,7 +529,10 @@ def train_per_game(game_datasets, args, device):
             print(f"  Exact match accuracy:         {exact_match_acc:.4f}")
             print(f"  Hamming loss:                 {hamming_loss:.4f}")
             print(f"  Baseline (always predict 0):  {baseline:.4f}")
-            print(f"  Per-key F1: {[f'{v:.3f}' for v in f1_scores]}")
+            print(f"  Per-key F1 (sorted by score):")
+            pairs = list(zip(key_names if key_names else [str(k) for k in range(num_actions)], f1_scores))
+            for key, f1 in sorted(pairs, key=lambda x: -x[1]):
+                print(f"    {key:<20s} {f1:.3f}")
         else:
             print(f"  Test accuracy: {accuracy:.4f}")
 
@@ -543,6 +561,8 @@ def main():
                         help='Data has no source subfolder: dump-dir/<game>/... instead of dump-dir/<source>/<game>/...')
     parser.add_argument('--filter-actions', type=str, default=None,
                         help='Comma-separated list of action labels to keep (skipped dataset only), e.g. right,left,crouch,jump')
+    parser.add_argument('--game', type=str, default=None,
+                        help='Only train on this game, e.g. --game be-a-snake')
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -552,8 +572,10 @@ def main():
 
     if args.per_game:
         print("Loading per-game data...")
+        game_filter = set(args.game.split(',')) if args.game else None
         game_datasets = load_data_per_game(dataset=args.dataset, dump_dir=args.dump_dir,
-                                           no_source=args.no_source, filter_actions=filter_actions)
+                                           no_source=args.no_source, filter_actions=filter_actions,
+                                           game_filter=game_filter)
         print(f"Games: {list(game_datasets.keys())}")
         per_game_results = train_per_game(game_datasets, args, device)
         print(f"\n{'='*60}")
