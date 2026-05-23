@@ -523,10 +523,16 @@ def main():
         source_filter=args.source, no_source=args.no_source)
     print(f"z shape: {z.shape}")
 
+    # Always print action label inventory so logs show what's present
+    unique_labels = sorted(set(a for a in actions if a is not None))
+    from collections import Counter
+    label_counts = Counter(a for a in actions if a is not None)
+    print(f"\nAction labels found ({len(unique_labels)}):")
+    for lbl in unique_labels:
+        print(f"  {lbl}: {label_counts[lbl]}")
+
     if args.filter_actions:
         keep = set(a.strip() for a in args.filter_actions.split(','))
-        unique_labels = sorted(set(a for a in actions if a is not None))
-        print(f"Unique action labels found ({len(unique_labels)}): {unique_labels[:30]}")
         mask = [a in keep for a in actions]
         z       = z[np.array(mask)]
         actions = [a for a, m in zip(actions, mask) if m]
