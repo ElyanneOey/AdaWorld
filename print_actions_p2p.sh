@@ -1,7 +1,6 @@
 #!/bin/bash
 
-#SBATCH --partition=gpu_h100
-#SBATCH --gpus=0
+#SBATCH --partition=staging
 #SBATCH --job-name=print_actions_p2p
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
