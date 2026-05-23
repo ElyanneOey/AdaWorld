@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --time=04:00:00
-#SBATCH --output=logs/per_game_viz_%A.out
+#SBATCH --output=logs/per_game_viz_p2p_ada_%A.out
 
 module purge
 module load 2024

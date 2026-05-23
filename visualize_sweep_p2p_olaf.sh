@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --time=02:00:00
-#SBATCH --output=logs/viz_sweep_%A.out
+#SBATCH --output=logs/viz_sweep_p2p_olaf_%A.out
 
 module purge
 module load 2024
