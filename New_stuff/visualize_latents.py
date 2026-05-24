@@ -512,6 +512,10 @@ def parse_args():
                    help='Data has no source subfolder: dump-dir/<game>/... instead of dump-dir/<source>/<game>/...')
     p.add_argument('--single-action', action='store_true',
                    help='Keep only samples where a single action is pressed (no + combinations)')
+    p.add_argument('--max-games', type=int, default=None,
+                   help='Randomly subsample this many games before plotting (e.g. --max-games 10)')
+    p.add_argument('--games-seed', type=int, default=42,
+                   help='Random seed for --max-games sampling (default: 42)')
     return p.parse_args()
 
 
@@ -549,6 +553,18 @@ def main():
         games   = [g for g, m in zip(games,   mask) if m]
         sources = [s for s, m in zip(sources,  mask) if m]
         print(f"Single-action filter: {mask.sum()}/{len(mask)} samples remaining")
+
+    if args.max_games is not None:
+        all_game_names = sorted(set(games))
+        rng = np.random.default_rng(args.games_seed)
+        chosen = set(rng.choice(all_game_names, min(args.max_games, len(all_game_names)), replace=False).tolist())
+        print(f"Game subsample ({len(chosen)}/{len(all_game_names)}): {sorted(chosen)}")
+        mask = np.array([g in chosen for g in games])
+        z       = z[mask]
+        actions = [a for a, m in zip(actions, mask) if m]
+        games   = [g for g, m in zip(games,   mask) if m]
+        sources = [s for s, m in zip(sources,  mask) if m]
+        print(f"After game filter: {len(z)} samples remaining")
 
     # --- PCA ---
     if args.method in ('pca', 'all'):
