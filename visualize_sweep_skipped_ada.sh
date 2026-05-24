@@ -21,6 +21,7 @@ python New_stuff/visualize_latents.py \
     --out-dir ./plots/skipped/adaworld \
     --max-samples 10000 \
     --max-games 10 \
+    --games-seed 42 \
     --method all \
     --sweep \
     --sweep-color both \
