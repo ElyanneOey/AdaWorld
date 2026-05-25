@@ -282,6 +282,8 @@ def scatter_plot(
     title: str,
     save_path: str,
     max_classes: int = 300,
+    dot_size: float = 8,
+    legend_fontsize: float = 5,
 ) -> None:
     """2D scatter plot colored by label."""
     label_encoder = LabelEncoder()
@@ -317,17 +319,17 @@ def scatter_plot(
     ax.scatter(
         valid_emb[:, 0], valid_emb[:, 1],
         c=encoded, cmap=cmap,
-        alpha=0.5, s=8, linewidths=0
+        alpha=0.5, s=dot_size, linewidths=0
     )
 
     legend_handles = [
         plt.Line2D([0], [0], marker='o', color='w',
-                   markerfacecolor=cmap(i / n), markersize=6, label=str(cls))
+                   markerfacecolor=cmap(i / n), markersize=legend_fontsize * 1.2, label=str(cls))
         for i, cls in enumerate(classes)
     ]
     ncol = max(1, n // 30)
     ax.legend(handles=legend_handles, title='Label', bbox_to_anchor=(1.02, 1),
-              loc='upper left', fontsize=5, ncol=ncol)
+              loc='upper left', fontsize=legend_fontsize, ncol=ncol)
 
     ax.set_title(title, fontsize=13)
     ax.set_xlabel('dim 1')
@@ -368,6 +370,8 @@ def run_sweep(
     umap_min_dist: list = None,
     tsne_perplexity: list = None,
     pca_pairs: list = None,
+    dot_size: float = 8,
+    legend_fontsize: float = 9,
 ) -> None:
     """Run one method across a grid of hyperparameter values and save one plot per setting."""
     z_use = z
@@ -385,7 +389,8 @@ def run_sweep(
                 emb = run_umap(z_use, n_components=2, n_neighbors=nn, min_dist=md)
                 scatter_plot(emb, labels,
                              f"UMAP (n_neighbors={nn}, min_dist={md}) — colored by {color_by}",
-                             os.path.join(sweep_dir, f"{tag}.png"))
+                             os.path.join(sweep_dir, f"{tag}.png"),
+                             dot_size=dot_size, legend_fontsize=legend_fontsize)
 
     elif method == 'tsne':
         perp_list = tsne_perplexity or [5, 30, 50, 100]
@@ -398,7 +403,8 @@ def run_sweep(
             emb = run_tsne(z_use, perplexity=perp)
             scatter_plot(emb, labels,
                          f"t-SNE (perplexity={perp}) — colored by {color_by}",
-                         os.path.join(sweep_dir, f"{tag}.png"))
+                         os.path.join(sweep_dir, f"{tag}.png"),
+                         dot_size=dot_size, legend_fontsize=legend_fontsize)
 
     elif method == 'pca':
         pairs = pca_pairs or [(0, 1), (0, 2), (1, 2), (0, 3)]
@@ -414,7 +420,8 @@ def run_sweep(
             emb = full_emb[:, [i, j]]
             scatter_plot(emb, labels,
                          f"PCA (PC{i+1} vs PC{j+1}) — colored by {color_by}",
-                         os.path.join(sweep_dir, f"{tag}.png"))
+                         os.path.join(sweep_dir, f"{tag}.png"),
+                         dot_size=dot_size, legend_fontsize=legend_fontsize)
 
 
 # ========================== Per-game analysis ================================
@@ -426,6 +433,8 @@ def run_per_game(
     out_dir: str,
     method: str = 'pca',
     min_samples: int = 20,
+    dot_size: float = 8,
+    legend_fontsize: float = 9,
 ) -> None:
     """For each game, run dimensionality reduction on that game's latents only
     and save a scatter plot colored by action."""
@@ -462,7 +471,8 @@ def run_per_game(
 
             title = f"{game}\n{method.upper()} — colored by action  (n={n})"
             if has_labels:
-                scatter_plot(emb, actions_g, title, save_path)
+                scatter_plot(emb, actions_g, title, save_path,
+                             dot_size=dot_size, legend_fontsize=legend_fontsize)
             else:
                 print(f"  {game}: no action labels, skipping plot")
         except Exception as e:
@@ -516,6 +526,10 @@ def parse_args():
                    help='Randomly subsample this many games before plotting (e.g. --max-games 10)')
     p.add_argument('--games-seed', type=int, default=42,
                    help='Random seed for --max-games sampling (default: 42)')
+    p.add_argument('--dot-size', type=float, default=8,
+                   help='Dot size in scatter plots (default: 8)')
+    p.add_argument('--legend-fontsize', type=float, default=9,
+                   help='Font size for legend labels (default: 9)')
     return p.parse_args()
 
 
@@ -574,27 +588,33 @@ def main():
 
         pca_2d, _ = run_pca(z, n_components=2)
         scatter_plot(pca_2d, actions, 'PCA — colored by action',
-                     os.path.join(args.out_dir, 'pca_actions.png'))
+                     os.path.join(args.out_dir, 'pca_actions.png'),
+                     dot_size=args.dot_size, legend_fontsize=args.legend_fontsize)
         scatter_plot(pca_2d, games, 'PCA — colored by game',
-                     os.path.join(args.out_dir, 'pca_games.png'))
+                     os.path.join(args.out_dir, 'pca_games.png'),
+                     dot_size=args.dot_size, legend_fontsize=args.legend_fontsize)
 
     # --- t-SNE ---
     if args.method in ('tsne', 'all'):
         print("\nRunning t-SNE (this may take a few minutes)...")
         tsne_2d = run_tsne(z)
         scatter_plot(tsne_2d, actions, 't-SNE — colored by action',
-                     os.path.join(args.out_dir, 'tsne_actions.png'))
+                     os.path.join(args.out_dir, 'tsne_actions.png'),
+                     dot_size=args.dot_size, legend_fontsize=args.legend_fontsize)
         scatter_plot(tsne_2d, games, 't-SNE — colored by game',
-                     os.path.join(args.out_dir, 'tsne_games.png'))
+                     os.path.join(args.out_dir, 'tsne_games.png'),
+                     dot_size=args.dot_size, legend_fontsize=args.legend_fontsize)
 
     # --- UMAP ---
     if args.method in ('umap', 'all'):
         print("\nRunning UMAP (2D)...")
         umap_2d = run_umap(z, n_components=2)
         scatter_plot(umap_2d, actions, 'UMAP — colored by action',
-                     os.path.join(args.out_dir, 'umap_actions.png'))
+                     os.path.join(args.out_dir, 'umap_actions.png'),
+                     dot_size=args.dot_size, legend_fontsize=args.legend_fontsize)
         scatter_plot(umap_2d, games, 'UMAP — colored by game',
-                     os.path.join(args.out_dir, 'umap_games.png'))
+                     os.path.join(args.out_dir, 'umap_games.png'),
+                     dot_size=args.dot_size, legend_fontsize=args.legend_fontsize)
 
         if args.umap_3d:
             print("\nRunning UMAP (3D)...")
@@ -617,13 +637,15 @@ def main():
                 run_sweep(z, actions, games, args.out_dir, method=m,
                           color_by=color_by,
                           umap_n_neighbors=nn_list, umap_min_dist=md_list,
-                          tsne_perplexity=perp_list)
+                          tsne_perplexity=perp_list,
+                          dot_size=args.dot_size, legend_fontsize=args.legend_fontsize)
 
     # --- Per-game ---
     if args.per_game:
         run_per_game(z, actions, games, args.out_dir,
                      method=args.per_game_method,
-                     min_samples=args.min_samples)
+                     min_samples=args.min_samples,
+                     dot_size=args.dot_size, legend_fontsize=args.legend_fontsize)
 
     print(f"\nDone. Plots saved to {args.out_dir}/")
 
