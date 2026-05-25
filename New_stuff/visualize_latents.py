@@ -344,11 +344,12 @@ def scatter_plot(
     print(f"  Saved: {save_path}")
 
 
-def pca_variance_plot(pca, save_path: str) -> None:
-    """Plot cumulative explained variance for PCA."""
-    explained = np.cumsum(pca.explained_variance_ratio_) * 100
+def pca_variance_plot(pca_entries: list, save_path: str) -> None:
+    """Plot cumulative explained variance, one line per (label, pca) entry."""
     fig, ax = plt.subplots(figsize=(8, 4))
-    ax.plot(range(1, len(explained) + 1), explained, marker='o', markersize=4)
+    for label, pca in pca_entries:
+        explained = np.cumsum(pca.explained_variance_ratio_) * 100
+        ax.plot(range(1, len(explained) + 1), explained, marker='o', markersize=4, label=label)
     ax.axhline(80, color='red', linestyle='--', label='80%')
     ax.axhline(95, color='orange', linestyle='--', label='95%')
     ax.set_xlabel('Number of PCA components')
@@ -618,8 +619,15 @@ def main():
     # --- PCA ---
     if args.method in ('pca', 'all'):
         print("\nRunning PCA...")
-        _, pca_full = run_pca(z, n_components=min(z.shape[1], z.shape[0]))
-        pca_variance_plot(pca_full, os.path.join(args.out_dir, 'pca_variance.png'))
+        sources_arr = np.array(sources)
+        pca_entries = []
+        for src in sorted(set(sources)):
+            z_src = z[sources_arr == src]
+            if len(z_src) < 2:
+                continue
+            _, pca_src = run_pca(z_src, n_components=min(z_src.shape[1], z_src.shape[0]))
+            pca_entries.append((src, pca_src))
+        pca_variance_plot(pca_entries, os.path.join(args.out_dir, 'pca_variance.png'))
 
         pca_2d, _ = run_pca(z, n_components=2)
         scatter_plot(pca_2d, actions, 'PCA — colored by action',
