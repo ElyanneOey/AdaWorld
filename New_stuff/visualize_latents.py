@@ -217,6 +217,7 @@ def scatter_plot_3d(
     title: str,
     save_path: str,
     max_classes: int = 300,
+    title_fontsize: float = 13,
 ) -> None:
     """3D scatter plot colored by label, saved as a static PNG."""
     from mpl_toolkits.mplot3d import Axes3D
@@ -264,7 +265,7 @@ def scatter_plot_3d(
     ax.legend(handles=legend_handles, title='Label', bbox_to_anchor=(1.05, 1),
               loc='upper left', fontsize=5, ncol=ncol)
 
-    ax.set_title(title, fontsize=13)
+    ax.set_title(title, fontsize=title_fontsize)
     ax.set_xlabel('dim 1')
     ax.set_ylabel('dim 2')
     ax.set_zlabel('dim 3')
@@ -286,6 +287,7 @@ def scatter_plot(
     legend_fontsize: float = 9,
     fig_width: float = 14,
     fig_height: float = 8,
+    title_fontsize: float = 13,
 ) -> None:
     """2D scatter plot colored by label."""
     label_encoder = LabelEncoder()
@@ -333,7 +335,7 @@ def scatter_plot(
     ax.legend(handles=legend_handles, title='Label', bbox_to_anchor=(1.02, 1),
               loc='upper left', fontsize=legend_fontsize, ncol=ncol)
 
-    ax.set_title(title, fontsize=13)
+    ax.set_title(title, fontsize=title_fontsize)
     ax.set_xlabel('dim 1')
     ax.set_ylabel('dim 2')
     plt.tight_layout()
@@ -376,6 +378,7 @@ def run_sweep(
     legend_fontsize: float = 9,
     fig_width: float = 14,
     fig_height: float = 8,
+    title_fontsize: float = 13,
 ) -> None:
     """Run one method across a grid of hyperparameter values and save one plot per setting."""
     z_use = z
@@ -395,7 +398,8 @@ def run_sweep(
                              f"UMAP (n_neighbors={nn}, min_dist={md}) — colored by {color_by}",
                              os.path.join(sweep_dir, f"{tag}.png"),
                              dot_size=dot_size, legend_fontsize=legend_fontsize,
-                             fig_width=fig_width, fig_height=fig_height)
+                             fig_width=fig_width, fig_height=fig_height,
+                             title_fontsize=title_fontsize)
 
     elif method == 'tsne':
         perp_list = tsne_perplexity or [5, 30, 50, 100]
@@ -410,7 +414,8 @@ def run_sweep(
                          f"t-SNE (perplexity={perp}) — colored by {color_by}",
                          os.path.join(sweep_dir, f"{tag}.png"),
                          dot_size=dot_size, legend_fontsize=legend_fontsize,
-                         fig_width=fig_width, fig_height=fig_height)
+                         fig_width=fig_width, fig_height=fig_height,
+                         title_fontsize=title_fontsize)
 
     elif method == 'pca':
         pairs = pca_pairs or [(0, 1), (0, 2), (1, 2), (0, 3)]
@@ -428,7 +433,8 @@ def run_sweep(
                          f"PCA (PC{i+1} vs PC{j+1}) — colored by {color_by}",
                          os.path.join(sweep_dir, f"{tag}.png"),
                          dot_size=dot_size, legend_fontsize=legend_fontsize,
-                         fig_width=fig_width, fig_height=fig_height)
+                         fig_width=fig_width, fig_height=fig_height,
+                         title_fontsize=title_fontsize)
 
 
 # ========================== Per-game analysis ================================
@@ -444,6 +450,7 @@ def run_per_game(
     legend_fontsize: float = 9,
     fig_width: float = 14,
     fig_height: float = 8,
+    title_fontsize: float = 13,
 ) -> None:
     """For each game, run dimensionality reduction on that game's latents only
     and save a scatter plot colored by action."""
@@ -482,7 +489,8 @@ def run_per_game(
             if has_labels:
                 scatter_plot(emb, actions_g, title, save_path,
                              dot_size=dot_size, legend_fontsize=legend_fontsize,
-                             fig_width=fig_width, fig_height=fig_height)
+                             fig_width=fig_width, fig_height=fig_height,
+                             title_fontsize=title_fontsize)
             else:
                 print(f"  {game}: no action labels, skipping plot")
         except Exception as e:
@@ -544,6 +552,10 @@ def parse_args():
                    help='Figure width in inches (default: 14)')
     p.add_argument('--fig-height', type=float, default=8,
                    help='Figure height in inches (default: 8)')
+    p.add_argument('--title-fontsize', type=float, default=13,
+                   help='Font size for plot titles (default: 13)')
+    p.add_argument('--clean-game-names', action='store_true',
+                   help='Strip "retro_" prefix and "_v<version>" suffix from game names')
     return p.parse_args()
 
 
@@ -594,6 +606,15 @@ def main():
         sources = [s for s, m in zip(sources,  mask) if m]
         print(f"After game filter: {len(z)} samples remaining")
 
+    if args.clean_game_names:
+        import re
+        def _clean(name):
+            name = re.sub(r'^retro_', '', name)
+            name = re.sub(r'_v[\d.]+$', '', name)
+            return name
+        games = [_clean(g) for g in games]
+        print(f"Game names after cleaning: {sorted(set(games))}")
+
     # --- PCA ---
     if args.method in ('pca', 'all'):
         print("\nRunning PCA...")
@@ -604,11 +625,13 @@ def main():
         scatter_plot(pca_2d, actions, 'PCA — colored by action',
                      os.path.join(args.out_dir, 'pca_actions.png'),
                      dot_size=args.dot_size, legend_fontsize=args.legend_fontsize,
-                     fig_width=args.fig_width, fig_height=args.fig_height)
+                     fig_width=args.fig_width, fig_height=args.fig_height,
+                     title_fontsize=args.title_fontsize)
         scatter_plot(pca_2d, games, 'PCA — colored by game',
                      os.path.join(args.out_dir, 'pca_games.png'),
                      dot_size=args.dot_size, legend_fontsize=args.legend_fontsize,
-                     fig_width=args.fig_width, fig_height=args.fig_height)
+                     fig_width=args.fig_width, fig_height=args.fig_height,
+                     title_fontsize=args.title_fontsize)
 
     # --- t-SNE ---
     if args.method in ('tsne', 'all'):
@@ -617,11 +640,13 @@ def main():
         scatter_plot(tsne_2d, actions, 't-SNE — colored by action',
                      os.path.join(args.out_dir, 'tsne_actions.png'),
                      dot_size=args.dot_size, legend_fontsize=args.legend_fontsize,
-                     fig_width=args.fig_width, fig_height=args.fig_height)
+                     fig_width=args.fig_width, fig_height=args.fig_height,
+                     title_fontsize=args.title_fontsize)
         scatter_plot(tsne_2d, games, 't-SNE — colored by game',
                      os.path.join(args.out_dir, 'tsne_games.png'),
                      dot_size=args.dot_size, legend_fontsize=args.legend_fontsize,
-                     fig_width=args.fig_width, fig_height=args.fig_height)
+                     fig_width=args.fig_width, fig_height=args.fig_height,
+                     title_fontsize=args.title_fontsize)
 
     # --- UMAP ---
     if args.method in ('umap', 'all'):
@@ -630,19 +655,23 @@ def main():
         scatter_plot(umap_2d, actions, 'UMAP — colored by action',
                      os.path.join(args.out_dir, 'umap_actions.png'),
                      dot_size=args.dot_size, legend_fontsize=args.legend_fontsize,
-                     fig_width=args.fig_width, fig_height=args.fig_height)
+                     fig_width=args.fig_width, fig_height=args.fig_height,
+                     title_fontsize=args.title_fontsize)
         scatter_plot(umap_2d, games, 'UMAP — colored by game',
                      os.path.join(args.out_dir, 'umap_games.png'),
                      dot_size=args.dot_size, legend_fontsize=args.legend_fontsize,
-                     fig_width=args.fig_width, fig_height=args.fig_height)
+                     fig_width=args.fig_width, fig_height=args.fig_height,
+                     title_fontsize=args.title_fontsize)
 
         if args.umap_3d:
             print("\nRunning UMAP (3D)...")
             umap_3d = run_umap(z, n_components=3)
             scatter_plot_3d(umap_3d, actions, 'UMAP 3D — colored by action',
-                            os.path.join(args.out_dir, 'umap_3d_actions.png'))
+                            os.path.join(args.out_dir, 'umap_3d_actions.png'),
+                            title_fontsize=args.title_fontsize)
             scatter_plot_3d(umap_3d, games, 'UMAP 3D — colored by game',
-                            os.path.join(args.out_dir, 'umap_3d_games.png'))
+                            os.path.join(args.out_dir, 'umap_3d_games.png'),
+                            title_fontsize=args.title_fontsize)
 
     # --- Parameter sweep ---
     if args.sweep:
@@ -659,7 +688,8 @@ def main():
                           umap_n_neighbors=nn_list, umap_min_dist=md_list,
                           tsne_perplexity=perp_list,
                           dot_size=args.dot_size, legend_fontsize=args.legend_fontsize,
-                          fig_width=args.fig_width, fig_height=args.fig_height)
+                          fig_width=args.fig_width, fig_height=args.fig_height,
+                          title_fontsize=args.title_fontsize)
 
     # --- Per-game ---
     if args.per_game:
@@ -667,7 +697,8 @@ def main():
                      method=args.per_game_method,
                      min_samples=args.min_samples,
                      dot_size=args.dot_size, legend_fontsize=args.legend_fontsize,
-                     fig_width=args.fig_width, fig_height=args.fig_height)
+                     fig_width=args.fig_width, fig_height=args.fig_height,
+                     title_fontsize=args.title_fontsize)
 
     print(f"\nDone. Plots saved to {args.out_dir}/")
 
