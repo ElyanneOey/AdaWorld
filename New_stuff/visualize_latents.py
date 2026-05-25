@@ -354,7 +354,6 @@ def pca_variance_plot(pca_entries: list, save_path: str) -> None:
     ax.axhline(95, color='orange', linestyle='--', label='95%')
     ax.set_xlabel('Number of PCA components')
     ax.set_ylabel('Cumulative explained variance (%)')
-    ax.set_title('PCA — Cumulative Explained Variance')
     ax.legend()
     plt.tight_layout()
     plt.savefig(save_path, dpi=150)
