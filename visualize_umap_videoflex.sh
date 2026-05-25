@@ -23,20 +23,26 @@ BASE="--dump-dir /gpfs/home3/scur0531/AdaWorld/latent_actions_videoflextok \
     --method umap \
     --filter-actions right,left,crouch,jump"
 
-echo "=== small font ==="
+echo "=== small font, small fig ==="
 python New_stuff/visualize_latents.py $BASE \
     --out-dir ./plots/videoflextok_umap/small \
     --dot-size 10 \
-    --legend-fontsize 9
+    --legend-fontsize 9 \
+    --fig-width 10 \
+    --fig-height 6
 
-echo "=== medium font ==="
+echo "=== medium font, medium fig ==="
 python New_stuff/visualize_latents.py $BASE \
     --out-dir ./plots/videoflextok_umap/medium \
     --dot-size 15 \
-    --legend-fontsize 12
+    --legend-fontsize 12 \
+    --fig-width 14 \
+    --fig-height 8
 
-echo "=== large font ==="
+echo "=== large font, large fig ==="
 python New_stuff/visualize_latents.py $BASE \
     --out-dir ./plots/videoflextok_umap/large \
     --dot-size 20 \
-    --legend-fontsize 16
+    --legend-fontsize 16 \
+    --fig-width 20 \
+    --fig-height 12
