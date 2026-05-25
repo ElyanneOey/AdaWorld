@@ -349,7 +349,7 @@ def pca_variance_plot(pca_entries: list, save_path: str) -> None:
     fig, ax = plt.subplots(figsize=(8, 4))
     for label, pca in pca_entries:
         explained = np.cumsum(pca.explained_variance_ratio_) * 100
-        ax.plot(range(1, len(explained) + 1), explained, marker='o', markersize=4, label=label)
+        ax.plot(range(1, len(explained) + 1), explained, marker='o', markersize=8, linewidth=2.5, label=label)
     ax.axhline(80, color='red', linestyle='--', label='80%')
     ax.axhline(95, color='orange', linestyle='--', label='95%')
     ax.set_xlabel('Number of PCA components')
