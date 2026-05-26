@@ -29,7 +29,8 @@ from sklearn.preprocessing import LabelEncoder
 
 
 def load_all_latents(dump_dir: str, max_samples: int | None = None,
-                     source_filter: str | None = None, no_source: bool = False):
+                     source_filter: str | None = None, no_source: bool = False,
+                     max_features: int | None = None):
     """Load all latent_actions.pt files and return stacked tensors with labels.
 
     Two supported layouts:
@@ -92,6 +93,9 @@ def load_all_latents(dump_dir: str, max_samples: int | None = None,
             z = torch.as_tensor(z, dtype=torch.float32)
         if z.ndim == 1:
             z = z.unsqueeze(0)
+
+        if max_features is not None:
+            z = z[:, :max_features]
 
         n = z.shape[0]
 
@@ -556,6 +560,8 @@ def parse_args():
                    help='Font size for plot titles (default: 13)')
     p.add_argument('--clean-game-names', action='store_true',
                    help='Strip "retro_" prefix and "_v<version>" suffix from game names')
+    p.add_argument('--max-features', type=int, default=None,
+                   help='Truncate each latent vector to this many features, e.g. 192 for 32x6')
     return p.parse_args()
 
 
@@ -566,7 +572,8 @@ def main():
     print("Loading latents...")
     z, actions, games, sources = load_all_latents(
         args.dump_dir, max_samples=args.max_samples,
-        source_filter=args.source, no_source=args.no_source)
+        source_filter=args.source, no_source=args.no_source,
+        max_features=args.max_features)
     print(f"z shape: {z.shape}")
 
     # Always print action label inventory so logs show what's present

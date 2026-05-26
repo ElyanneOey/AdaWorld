@@ -108,7 +108,7 @@ def _build_dataset(samples):
     return z, actions, games
 
 
-def load_data(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent_actions_dump', no_source=False, filter_actions=None):
+def load_data(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent_actions_dump', no_source=False, filter_actions=None, max_features=None):
     import os as _os
     if no_source:
         files = sorted(glob.glob(_os.path.join(dump_dir, '**', 'latent_actions.pt'), recursive=True))
@@ -139,6 +139,8 @@ def load_data(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent_actions_
         z = torch.as_tensor(data['z_mu'], dtype=torch.float32)
         if z.ndim == 1:
             z = z.unsqueeze(0)
+        if max_features is not None:
+            z = z[:, :max_features]
 
         n = min(z.shape[0], actions.shape[0])
         z = z[:n]
@@ -317,7 +319,7 @@ def evaluate_multiclass_model(model, loader, unique_games, device, target_index=
     }
     return total_accuracy, per_game_accuracy
 
-def load_data_per_game(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent_actions_dump', no_source=False, filter_actions=None, game_filter=None):
+def load_data_per_game(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent_actions_dump', no_source=False, filter_actions=None, game_filter=None, max_features=None):
     """Load data grouped by game. Returns dict: game_name -> (train_dataset, test_dataset, num_actions, action_mode)."""
     import os as _os
     if no_source:
@@ -355,6 +357,8 @@ def load_data_per_game(test_ratio=0.2, seed=42, dataset='both', dump_dir='latent
         z = torch.as_tensor(data['z_mu'], dtype=torch.float32)
         if z.ndim == 1:
             z = z.unsqueeze(0)
+        if max_features is not None:
+            z = z[:, :max_features]
 
         n = min(z.shape[0], actions.shape[0])
         z = z[:n]
@@ -563,6 +567,8 @@ def main():
                         help='Comma-separated list of action labels to keep (skipped dataset only), e.g. right,left,crouch,jump')
     parser.add_argument('--game', type=str, default=None,
                         help='Only train on this game, e.g. --game be-a-snake')
+    parser.add_argument('--max-features', type=int, default=None,
+                        help='Truncate each latent vector to this many features, e.g. 192 for 32x6')
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -575,7 +581,7 @@ def main():
         game_filter = set(args.game.split(',')) if args.game else None
         game_datasets = load_data_per_game(dataset=args.dataset, dump_dir=args.dump_dir,
                                            no_source=args.no_source, filter_actions=filter_actions,
-                                           game_filter=game_filter)
+                                           game_filter=game_filter, max_features=args.max_features)
         print(f"Games: {list(game_datasets.keys())}")
         per_game_results = train_per_game(game_datasets, args, device)
         print(f"\n{'='*60}")
@@ -602,7 +608,7 @@ def main():
         return
 
     print("Loading data...")
-    train_dataset, test_dataset, num_actions, unique_games, action_mode = load_data(dataset=args.dataset, dump_dir=args.dump_dir, no_source=args.no_source, filter_actions=filter_actions)
+    train_dataset, test_dataset, num_actions, unique_games, action_mode = load_data(dataset=args.dataset, dump_dir=args.dump_dir, no_source=args.no_source, filter_actions=filter_actions, max_features=args.max_features)
     print(f"Train samples: {len(train_dataset)}, Test samples: {len(test_dataset)}")
     print(f"Games: {unique_games}")
 
