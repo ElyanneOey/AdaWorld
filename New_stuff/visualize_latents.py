@@ -562,6 +562,8 @@ def parse_args():
                    help='Strip "retro_" prefix and "_v<version>" suffix from game names')
     p.add_argument('--max-features', type=int, default=None,
                    help='Truncate each latent vector to this many features, e.g. 192 for 32x6')
+    p.add_argument('--pca-compare-full', action='store_true',
+                   help='When used with --max-features, also plot PCA variance for the full untruncated latents')
     return p.parse_args()
 
 
@@ -627,12 +629,35 @@ def main():
         print("\nRunning PCA...")
         sources_arr = np.array(sources)
         pca_entries = []
-        for src in sorted(set(sources)):
-            z_src = z[sources_arr == src]
-            if len(z_src) < 2:
-                continue
-            _, pca_src = run_pca(z_src, n_components=min(z_src.shape[1], z_src.shape[0]))
-            pca_entries.append((src, pca_src))
+
+        if args.pca_compare_full and args.max_features is not None:
+            # Load full (untruncated) data alongside the already-truncated z
+            print("  Loading full (untruncated) latents for PCA comparison...")
+            z_full, _, _, sources_full = load_all_latents(
+                args.dump_dir, max_samples=args.max_samples,
+                source_filter=args.source, no_source=args.no_source,
+                max_features=None)
+            sources_full_arr = np.array(sources_full)
+            for src in sorted(set(sources_full)):
+                z_src = z_full[sources_full_arr == src]
+                if len(z_src) < 2:
+                    continue
+                _, pca_src = run_pca(z_src, n_components=min(z_src.shape[1], z_src.shape[0]))
+                pca_entries.append((f"{src} (full)", pca_src))
+            for src in sorted(set(sources)):
+                z_src = z[sources_arr == src]
+                if len(z_src) < 2:
+                    continue
+                _, pca_src = run_pca(z_src, n_components=min(z_src.shape[1], z_src.shape[0]))
+                pca_entries.append((f"{src} ({args.max_features} features)", pca_src))
+        else:
+            for src in sorted(set(sources)):
+                z_src = z[sources_arr == src]
+                if len(z_src) < 2:
+                    continue
+                _, pca_src = run_pca(z_src, n_components=min(z_src.shape[1], z_src.shape[0]))
+                pca_entries.append((src, pca_src))
+
         pca_variance_plot(pca_entries, os.path.join(args.out_dir, 'pca_variance.png'))
 
         pca_2d, _ = run_pca(z, n_components=2)
