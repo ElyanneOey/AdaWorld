@@ -5,7 +5,7 @@
 #SBATCH --job-name=per_game_videoflex_32_umap
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --time=04:00:00
+#SBATCH --time=00:30:00
 #SBATCH --output=logs/per_game_videoflex_32_umap_%A.out
 
 module purge
