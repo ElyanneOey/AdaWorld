@@ -29,7 +29,7 @@ python New_stuff/visualize_latents.py \
     --umap-min-dist 0.1,0.5,0.8 \
     --tsne-perplexity 5,30,50,100 \
     --filter-actions "right,left,crouch,jump" \
-    --dot-size 20 \
+    --dot-size 50 \
     --legend-fontsize 16 \
     --fig-width 20 \
     --fig-height 12 \
