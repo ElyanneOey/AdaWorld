@@ -110,7 +110,7 @@ def save_pair(frame_at, frame_later, save_path, info_text, frame_offset):
 
 # ========================== Candidate collection ============================
 
-def collect_candidates(video_dir, action_name, frame_offset):
+def collect_candidates(video_dir, action_name, frame_offset, list_actions=False):
     """Walk video_dir, read actions.json per episode, collect jump-event metadata.
 
     Expected layout: video_dir/<game>/<seed>/<episode>/frames.mp4
@@ -123,6 +123,7 @@ def collect_candidates(video_dir, action_name, frame_offset):
 
     print(f'Found {len(video_files)} episodes to scan...')
     candidates = []
+    all_action_keys = set()
 
     for video_path in video_files:
         episode_dir = os.path.dirname(video_path)
@@ -133,8 +134,11 @@ def collect_candidates(video_dir, action_name, frame_offset):
         with open(actions_json) as f:
             actions_raw = json.load(f)
 
+        # Print a raw sample from the very first episode so the user can see the format
+        if not all_action_keys and actions_raw:
+            print(f'  [debug] First episode raw action sample (first 3): {actions_raw[:3]}')
+
         parts = Path(video_path).relative_to(video_dir).parts
-        # layout: <game>/<seed>/<episode>/frames.mp4
         if len(parts) < 3:
             continue
         game, seed, episode = parts[0], parts[1], parts[2]
@@ -142,7 +146,11 @@ def collect_candidates(video_dir, action_name, frame_offset):
         n_frames = _video_frame_count(video_path)
 
         for i, action in enumerate(actions_raw):
-            if _to_action_key(action) != action_name:
+            key = _to_action_key(action)
+            all_action_keys.add(key)
+            if list_actions:
+                continue
+            if key != action_name:
                 continue
             if i + frame_offset >= n_frames:
                 continue
@@ -155,6 +163,13 @@ def collect_candidates(video_dir, action_name, frame_offset):
                 'frame_idx':  i,
             })
 
+    if list_actions:
+        print(f'\nAll unique action labels found ({len(all_action_keys)}):')
+        for k in sorted(str(k) for k in all_action_keys):
+            print(f'  {k}')
+        return []
+
+    print(f'Unique action labels seen: {sorted(str(k) for k in all_action_keys)[:20]}')
     print(f'Found {len(candidates)} "{action_name}" events across '
           f'{len({c["game"] for c in candidates})} games')
     return candidates
@@ -260,6 +275,8 @@ def parse_args():
                    help='Random seed for --random-sample (default: 42)')
     p.add_argument('--no-per-game', action='store_true',
                    help='Skip per-game saving, only save the random sample')
+    p.add_argument('--list-actions', action='store_true',
+                   help='Print all unique action labels found and exit (useful for debugging)')
     return p.parse_args()
 
 
@@ -268,7 +285,10 @@ def main():
     os.makedirs(args.out_dir, exist_ok=True)
     print(f'Looking for action "{args.action}", offset +{args.frame_offset} frames...\n')
 
-    candidates = collect_candidates(args.video_dir, args.action, args.frame_offset)
+    candidates = collect_candidates(args.video_dir, args.action, args.frame_offset,
+                                    list_actions=args.list_actions)
+    if args.list_actions:
+        return
 
     if not candidates:
         print('No candidates found — check your path and action label.')
