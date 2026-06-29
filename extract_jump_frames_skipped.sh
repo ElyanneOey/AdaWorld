@@ -16,8 +16,8 @@ source activate adaworld_elyanne
 cd ${SLURM_SUBMIT_DIR}
 
 python New_stuff/extract_jump_frames.py \
-    --video-dir /scratch-shared/scur0531/skipped_frames_v0.0.0 \
-    --out-dir ./jump_frames/skipped \
+    --video-dir /scratch-shared/scur0531/skipped_frames_v0.0.0_noeffect \
+    --out-dir ./jump_frames/skipped_noeffect \
     --action jump \
     --frame-offset 10 \
     --random-sample 100 \
