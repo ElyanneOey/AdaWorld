@@ -115,6 +115,15 @@ def collect_candidates(video_dir, action_name, frame_offset, list_actions=False)
 
     Expected layout: video_dir/<game>/<seed>/<episode>/frames.mp4
                                                        actions.json
+
+    actions.json format:
+      {
+        "action_descriptions": ["noop", "right", "left", "none", "crouch", "jump", ...],
+        "actions": [{"src_id": 0, "tgt_id": 1, "action": [0,0,0,0,1,0], ...}, ...]
+      }
+
+    action_descriptions[0] is "noop" (implicit, not in the action vector).
+    action_descriptions[1:] map to action vector indices 0, 1, 2, ...
     """
     video_files = sorted(glob.glob(
         os.path.join(video_dir, '**', 'frames.mp4'), recursive=True))
@@ -124,52 +133,65 @@ def collect_candidates(video_dir, action_name, frame_offset, list_actions=False)
     print(f'Found {len(video_files)} episodes to scan...')
     candidates = []
     all_action_keys = set()
+    first = True
 
     for video_path in video_files:
         episode_dir = os.path.dirname(video_path)
-        actions_json = os.path.join(episode_dir, 'actions.json')
-        if not os.path.isfile(actions_json):
+        actions_json_path = os.path.join(episode_dir, 'actions.json')
+        if not os.path.isfile(actions_json_path):
             continue
 
-        with open(actions_json) as f:
-            actions_raw = json.load(f)
+        with open(actions_json_path) as f:
+            data = json.load(f)
 
-        # Print a raw sample from the very first episode so the user can see the format
-        if not all_action_keys and actions_raw:
-            print(f'  [debug] First episode raw action sample (first 3): {actions_raw[:3]}')
+        # action_descriptions[0] = "noop" (not in vector), [1:] map to vector indices
+        descriptions = data.get('action_descriptions', [])
+        desc_to_vec_idx = {desc: i for i, desc in enumerate(descriptions[1:])}
+        frame_entries = data.get('actions', [])
+
+        if first and descriptions:
+            print(f'  [debug] action_descriptions: {descriptions}')
+            first = False
 
         parts = Path(video_path).relative_to(video_dir).parts
         if len(parts) < 3:
             continue
         game, seed, episode = parts[0], parts[1], parts[2]
-
         n_frames = _video_frame_count(video_path)
 
-        for i, action in enumerate(actions_raw):
-            key = _to_action_key(action)
-            all_action_keys.add(key)
+        for entry in frame_entries:
+            vec = entry.get('action', [])
+            src_id = entry.get('src_id', -1)
+
+            pressed = [desc for desc, idx in desc_to_vec_idx.items()
+                       if idx < len(vec) and vec[idx] == 1]
+            label = '+'.join(sorted(pressed)) if pressed else 'noop'
+            all_action_keys.add(label)
+
             if list_actions:
                 continue
-            if key != action_name:
+
+            if action_name not in label.split('+'):
                 continue
-            if i + frame_offset >= n_frames:
+            if src_id < 0 or src_id + frame_offset >= n_frames:
                 continue
+
             candidates.append({
                 'game':       game,
                 'game_clean': _clean_name(game),
                 'seed':       seed,
                 'episode':    episode,
                 'video_path': video_path,
-                'frame_idx':  i,
+                'frame_idx':  src_id,
             })
 
     if list_actions:
         print(f'\nAll unique action labels found ({len(all_action_keys)}):')
-        for k in sorted(str(k) for k in all_action_keys):
+        for k in sorted(all_action_keys):
             print(f'  {k}')
         return []
 
-    print(f'Unique action labels seen: {sorted(str(k) for k in all_action_keys)[:20]}')
+    print(f'Unique action labels seen: {sorted(all_action_keys)[:20]}')
     print(f'Found {len(candidates)} "{action_name}" events across '
           f'{len({c["game"] for c in candidates})} games')
     return candidates
